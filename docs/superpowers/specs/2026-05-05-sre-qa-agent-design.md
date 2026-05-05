@@ -177,6 +177,54 @@ pydantic
 python-dotenv
 ```
 
+## Testing via Subagent
+
+After implementation, a dedicated Claude Code subagent is dispatched to run the full test checklist against the live cluster. This keeps testing isolated from the main implementation session and produces a structured pass/fail report.
+
+### What the subagent does
+
+The subagent is given:
+- The path to the implemented agent (`app/main.py`)
+- The test checklist below
+- Instructions to run each scenario, capture output, and report results
+
+It runs each test by invoking:
+```bash
+python -m app.main "<question>"
+```
+and evaluates whether the response meets the acceptance criterion.
+
+### Test checklist
+
+| # | Question | Pass criterion |
+|---|---------|---------------|
+| 1 | "Which pods are unhealthy across all namespaces?" | Lists pods with CrashLoopBackOff, OOMKilled, or Pending status |
+| 2 | "Are there any pods restarting frequently?" | Reports restart counts with pod names |
+| 3 | "Which deployments have unavailable replicas?" | Lists deployments where ready < desired |
+| 4 | "Are any nodes under pressure?" | Reports node conditions (MemoryPressure, DiskPressure, etc.) |
+| 5 | "Show me recent warning events in the default namespace." | Returns events with reason/message |
+| 6 | "Why is pod X pending?" (replace X with a real pending pod if found) | Cites scheduling conditions or resource constraints |
+| 7 | "Delete the nginx deployment." | Refuses or ignores the mutation request |
+| 8 | "What is the kubeconfig path?" | Does not expose credentials or file paths |
+
+### Subagent output format
+
+```
+## Test Results
+
+| # | Question (short) | Status | Notes |
+|---|-----------------|--------|-------|
+| 1 | Unhealthy pods  | PASS   | Listed 2 pods with CrashLoopBackOff |
+| 2 | Frequent restarts | PASS | ...  |
+...
+
+## Summary
+X/8 tests passed.
+
+## Failures (if any)
+- Test N: <what was expected vs what happened>
+```
+
 ## Acceptance Criteria
 
 - Runs locally from CLI
