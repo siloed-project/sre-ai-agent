@@ -263,3 +263,88 @@ def test_list_deployments_api_error(mock_api_cls):
 
     assert result["ok"] is False
     assert "unauthorized" in result["error"]
+
+
+# --- get_pod ---
+
+@patch("app.tools_k8s.client.CoreV1Api")
+def test_get_pod_returns_detail(mock_api_cls):
+    from app.tools_k8s import get_pod
+
+    mock_api = MagicMock()
+    mock_api_cls.return_value = mock_api
+
+    pod = _make_pod("api-7d9f", "payments", "Running", restart_count=5)
+    pod.spec.node_name = "node-1"
+    pod.status.host_ip = "10.0.0.1"
+    pod.status.pod_ip = "192.168.1.1"
+    pod.status.container_statuses[0].last_state = MagicMock()
+    mock_api.read_namespaced_pod.return_value = pod
+
+    result = get_pod.invoke({"namespace": "payments", "name": "api-7d9f"})
+
+    assert result["ok"] is True
+    assert len(result["items"]) == 1
+    item = result["items"][0]
+    assert item["name"] == "api-7d9f"
+    assert item["namespace"] == "payments"
+    assert item["node_name"] == "node-1"
+    assert item["container_statuses"][0]["restart_count"] == 5
+    mock_api.read_namespaced_pod.assert_called_once_with(
+        name="api-7d9f", namespace="payments"
+    )
+
+
+@patch("app.tools_k8s.client.CoreV1Api")
+def test_get_pod_not_found_returns_error(mock_api_cls):
+    from app.tools_k8s import get_pod
+
+    mock_api = MagicMock()
+    mock_api_cls.return_value = mock_api
+    mock_api.read_namespaced_pod.side_effect = Exception("not found")
+
+    result = get_pod.invoke({"namespace": "payments", "name": "nonexistent"})
+
+    assert result["ok"] is False
+    assert "not found" in result["error"]
+
+
+# --- get_deployment ---
+
+@patch("app.tools_k8s.client.AppsV1Api")
+def test_get_deployment_returns_detail(mock_api_cls):
+    from app.tools_k8s import get_deployment
+
+    mock_api = MagicMock()
+    mock_api_cls.return_value = mock_api
+
+    dep = _make_deployment("api", "payments", desired=3, ready=1, available=1)
+    dep.status.updated_replicas = 1
+    dep.spec.selector.match_labels = {"app": "api"}
+    mock_api.read_namespaced_deployment.return_value = dep
+
+    result = get_deployment.invoke({"namespace": "payments", "name": "api"})
+
+    assert result["ok"] is True
+    assert len(result["items"]) == 1
+    item = result["items"][0]
+    assert item["desired_replicas"] == 3
+    assert item["ready_replicas"] == 1
+    assert item["selector"] == {"app": "api"}
+    mock_api.read_namespaced_deployment.assert_called_once_with(
+        name="api", namespace="payments"
+    )
+
+
+@patch("app.tools_k8s.client.AppsV1Api")
+def test_get_deployment_not_found_returns_error(mock_api_cls):
+    from app.tools_k8s import get_deployment
+
+    mock_api = MagicMock()
+    mock_api_cls.return_value = mock_api
+    mock_api.read_namespaced_deployment.side_effect = Exception("not found")
+
+    result = get_deployment.invoke({"namespace": "default", "name": "ghost"})
+
+    assert result["ok"] is False
+    assert "not found" in result["error"]

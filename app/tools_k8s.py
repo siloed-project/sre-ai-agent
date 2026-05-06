@@ -18,7 +18,7 @@ def list_pods(namespace: str | None = None) -> dict:
     """
     try:
         v1 = client.CoreV1Api()
-        if namespace:
+        if namespace is not None:
             response = v1.list_namespaced_pod(namespace)
         else:
             response = v1.list_pod_for_all_namespaces()
@@ -153,5 +153,84 @@ def list_deployments(namespace: str | None = None) -> dict:
                 }
             )
         return ToolResult(ok=True, items=items, error=None)
+    except Exception as e:
+        return ToolResult(ok=False, items=[], error=str(e))
+
+
+@tool
+def get_pod(namespace: str, name: str) -> dict:
+    """Get detailed information about a specific pod including container states and conditions.
+
+    Args:
+        namespace: Kubernetes namespace where the pod lives.
+        name: Name of the pod.
+    """
+    try:
+        v1 = client.CoreV1Api()
+        pod = v1.read_namespaced_pod(name=name, namespace=namespace)
+
+        item = {
+            "name": pod.metadata.name,
+            "namespace": pod.metadata.namespace,
+            "phase": pod.status.phase,
+            "node_name": pod.spec.node_name,
+            "host_ip": pod.status.host_ip,
+            "pod_ip": pod.status.pod_ip,
+            "conditions": [
+                {
+                    "type": c.type,
+                    "status": c.status,
+                    "reason": c.reason,
+                    "message": c.message,
+                }
+                for c in (pod.status.conditions or [])
+            ],
+            "container_statuses": [
+                {
+                    "name": cs.name,
+                    "ready": cs.ready,
+                    "restart_count": cs.restart_count,
+                    "state": str(cs.state),
+                    "last_state": str(cs.last_state),
+                }
+                for cs in (pod.status.container_statuses or [])
+            ],
+        }
+        return ToolResult(ok=True, items=[item], error=None)
+    except Exception as e:
+        return ToolResult(ok=False, items=[], error=str(e))
+
+
+@tool
+def get_deployment(namespace: str, name: str) -> dict:
+    """Get detailed information about a specific deployment including replica status and conditions.
+
+    Args:
+        namespace: Kubernetes namespace where the deployment lives.
+        name: Name of the deployment.
+    """
+    try:
+        apps_v1 = client.AppsV1Api()
+        dep = apps_v1.read_namespaced_deployment(name=name, namespace=namespace)
+
+        item = {
+            "name": dep.metadata.name,
+            "namespace": dep.metadata.namespace,
+            "desired_replicas": dep.spec.replicas,
+            "ready_replicas": dep.status.ready_replicas or 0,
+            "available_replicas": dep.status.available_replicas or 0,
+            "updated_replicas": dep.status.updated_replicas or 0,
+            "selector": dep.spec.selector.match_labels,
+            "conditions": [
+                {
+                    "type": c.type,
+                    "status": c.status,
+                    "message": c.message,
+                    "reason": c.reason,
+                }
+                for c in (dep.status.conditions or [])
+            ],
+        }
+        return ToolResult(ok=True, items=[item], error=None)
     except Exception as e:
         return ToolResult(ok=False, items=[], error=str(e))
