@@ -8,6 +8,8 @@ try:
 except Exception:
     pass  # Will fail at runtime if kubeconfig is unavailable
 
+_MAX_ITEMS = 50  # cap per tool call to stay within LLM context limits
+
 
 @tool
 def list_pods(namespace: str | None = None) -> dict:
@@ -23,8 +25,17 @@ def list_pods(namespace: str | None = None) -> dict:
         else:
             response = v1.list_pod_for_all_namespaces()
 
+        def _pod_priority(pod):
+            # unhealthy phases first, then by restart count descending
+            phase = pod.status.phase or ""
+            healthy = phase in ("Running", "Succeeded")
+            restarts = sum(cs.restart_count for cs in (pod.status.container_statuses or []))
+            return (healthy, -restarts)
+
+        sorted_pods = sorted(response.items, key=_pod_priority)
+
         items = []
-        for pod in response.items:
+        for pod in sorted_pods[:_MAX_ITEMS]:
             restart_count = sum(
                 cs.restart_count for cs in (pod.status.container_statuses or [])
             )
@@ -49,7 +60,11 @@ def list_pods(namespace: str | None = None) -> dict:
                     ],
                 }
             )
-        return ToolResult(ok=True, items=items, error=None)
+        total = len(response.items)
+        result = ToolResult(ok=True, items=items, error=None)
+        if total > _MAX_ITEMS:
+            result["error"] = f"showing {_MAX_ITEMS} of {total} pods (prioritised unhealthy and high-restart)"
+        return result
     except Exception as e:
         return ToolResult(ok=False, items=[], error=str(e))
 
@@ -101,7 +116,7 @@ def list_events(namespace: str | None = None) -> dict:
         )
 
         items = []
-        for event in sorted_events:
+        for event in sorted_events[:_MAX_ITEMS]:
             items.append(
                 {
                     "namespace": event.metadata.namespace,
@@ -118,7 +133,11 @@ def list_events(namespace: str | None = None) -> dict:
                     "last_timestamp": str(event.last_timestamp),
                 }
             )
-        return ToolResult(ok=True, items=items, error=None)
+        total = len(sorted_events)
+        result = ToolResult(ok=True, items=items, error=None)
+        if total > _MAX_ITEMS:
+            result["error"] = f"showing {_MAX_ITEMS} of {total} events (warnings first)"
+        return result
     except Exception as e:
         return ToolResult(ok=False, items=[], error=str(e))
 
@@ -137,8 +156,16 @@ def list_deployments(namespace: str | None = None) -> dict:
         else:
             response = apps_v1.list_deployment_for_all_namespaces()
 
+        def _dep_priority(dep):
+            # unavailable deployments first
+            desired = dep.spec.replicas or 0
+            ready = dep.status.ready_replicas or 0
+            return ready >= desired
+
+        sorted_deps = sorted(response.items, key=_dep_priority)
+
         items = []
-        for dep in response.items:
+        for dep in sorted_deps[:_MAX_ITEMS]:
             items.append(
                 {
                     "name": dep.metadata.name,
@@ -152,7 +179,11 @@ def list_deployments(namespace: str | None = None) -> dict:
                     ],
                 }
             )
-        return ToolResult(ok=True, items=items, error=None)
+        total = len(response.items)
+        result = ToolResult(ok=True, items=items, error=None)
+        if total > _MAX_ITEMS:
+            result["error"] = f"showing {_MAX_ITEMS} of {total} deployments (unavailable first)"
+        return result
     except Exception as e:
         return ToolResult(ok=False, items=[], error=str(e))
 

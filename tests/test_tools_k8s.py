@@ -52,10 +52,11 @@ def test_list_pods_all_namespaces(mock_api_cls):
 
     assert result["ok"] is True
     assert len(result["items"]) == 2
-    assert result["items"][0]["name"] == "api-7d9f"
-    assert result["items"][0]["restart_count"] == 12
-    assert result["items"][1]["phase"] == "Pending"
-    assert result["error"] is None
+    # Pending (unhealthy) pod sorts first; Running pod with restarts sorts second
+    by_name = {i["name"]: i for i in result["items"]}
+    assert by_name["api-7d9f"]["restart_count"] == 12
+    assert by_name["indexer-54b2"]["phase"] == "Pending"
+    assert result["items"][0]["phase"] == "Pending"  # unhealthy comes first
     mock_api.list_pod_for_all_namespaces.assert_called_once()
 
 
@@ -230,8 +231,9 @@ def test_list_deployments_all_namespaces(mock_api_cls):
 
     assert result["ok"] is True
     assert len(result["items"]) == 2
-    assert result["items"][1]["ready_replicas"] == 0
-    assert result["items"][1]["desired_replicas"] == 2
+    # Unavailable deployment (worker) sorts first
+    assert result["items"][0]["ready_replicas"] == 0
+    assert result["items"][0]["desired_replicas"] == 2
     assert result["error"] is None
 
 
