@@ -1,5 +1,5 @@
+from langchain.agents import create_agent
 from langchain_anthropic import ChatAnthropic
-from langgraph.prebuilt import create_react_agent
 
 from app.prompts import SYSTEM_PROMPT
 from app.tools_k8s import (
@@ -16,4 +16,4 @@ TOOLS = [list_pods, list_nodes, list_events, list_deployments, get_pod, get_depl
 
 def build_agent():
     llm = ChatAnthropic(model="claude-haiku-4-5-20251001")
-    return create_react_agent(llm, TOOLS, prompt=SYSTEM_PROMPT)
+    return create_agent(llm, TOOLS, system_prompt=SYSTEM_PROMPT)
