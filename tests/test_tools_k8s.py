@@ -132,3 +132,134 @@ def test_list_nodes_api_error_returns_error_result(mock_api_cls):
 
     assert result["ok"] is False
     assert "timeout" in result["error"]
+
+
+# --- list_events ---
+
+def _make_event(name, namespace, type_, reason, message, obj_name="my-pod"):
+    event = MagicMock()
+    event.metadata.name = name
+    event.metadata.namespace = namespace
+    event.type = type_
+    event.reason = reason
+    event.message = message
+    event.involved_object.kind = "Pod"
+    event.involved_object.name = obj_name
+    event.involved_object.namespace = namespace
+    event.count = 3
+    event.last_timestamp = None
+    return event
+
+
+@patch("app.tools_k8s.client.CoreV1Api")
+def test_list_events_all_namespaces_warnings_first(mock_api_cls):
+    from app.tools_k8s import list_events
+
+    mock_api = MagicMock()
+    mock_api_cls.return_value = mock_api
+    mock_api.list_event_for_all_namespaces.return_value.items = [
+        _make_event("ev-1", "default", "Normal", "Pulled", "image pulled"),
+        _make_event("ev-2", "default", "Warning", "BackOff", "back-off restarting"),
+    ]
+
+    result = list_events.invoke({"namespace": None})
+
+    assert result["ok"] is True
+    assert len(result["items"]) == 2
+    # Warnings should appear first
+    assert result["items"][0]["type"] == "Warning"
+    assert result["error"] is None
+
+
+@patch("app.tools_k8s.client.CoreV1Api")
+def test_list_events_specific_namespace(mock_api_cls):
+    from app.tools_k8s import list_events
+
+    mock_api = MagicMock()
+    mock_api_cls.return_value = mock_api
+    mock_api.list_namespaced_event.return_value.items = [
+        _make_event("ev-3", "kube-system", "Warning", "FailedScheduling", "no nodes"),
+    ]
+
+    result = list_events.invoke({"namespace": "kube-system"})
+
+    assert result["ok"] is True
+    assert result["items"][0]["reason"] == "FailedScheduling"
+    mock_api.list_namespaced_event.assert_called_once_with("kube-system")
+
+
+@patch("app.tools_k8s.client.CoreV1Api")
+def test_list_events_api_error(mock_api_cls):
+    from app.tools_k8s import list_events
+
+    mock_api = MagicMock()
+    mock_api_cls.return_value = mock_api
+    mock_api.list_event_for_all_namespaces.side_effect = Exception("forbidden")
+
+    result = list_events.invoke({"namespace": None})
+
+    assert result["ok"] is False
+    assert "forbidden" in result["error"]
+
+
+# --- list_deployments ---
+
+def _make_deployment(name, namespace, desired, ready, available=None):
+    dep = MagicMock()
+    dep.metadata.name = name
+    dep.metadata.namespace = namespace
+    dep.spec.replicas = desired
+    dep.status.ready_replicas = ready
+    dep.status.available_replicas = available if available is not None else ready
+    dep.status.conditions = []
+    return dep
+
+
+@patch("app.tools_k8s.client.AppsV1Api")
+def test_list_deployments_all_namespaces(mock_api_cls):
+    from app.tools_k8s import list_deployments
+
+    mock_api = MagicMock()
+    mock_api_cls.return_value = mock_api
+    mock_api.list_deployment_for_all_namespaces.return_value.items = [
+        _make_deployment("api", "payments", desired=3, ready=3),
+        _make_deployment("worker", "search", desired=2, ready=0),
+    ]
+
+    result = list_deployments.invoke({"namespace": None})
+
+    assert result["ok"] is True
+    assert len(result["items"]) == 2
+    assert result["items"][1]["ready_replicas"] == 0
+    assert result["items"][1]["desired_replicas"] == 2
+    assert result["error"] is None
+
+
+@patch("app.tools_k8s.client.AppsV1Api")
+def test_list_deployments_specific_namespace(mock_api_cls):
+    from app.tools_k8s import list_deployments
+
+    mock_api = MagicMock()
+    mock_api_cls.return_value = mock_api
+    mock_api.list_namespaced_deployment.return_value.items = [
+        _make_deployment("frontend", "default", desired=1, ready=1),
+    ]
+
+    result = list_deployments.invoke({"namespace": "default"})
+
+    assert result["ok"] is True
+    mock_api.list_namespaced_deployment.assert_called_once_with("default")
+
+
+@patch("app.tools_k8s.client.AppsV1Api")
+def test_list_deployments_api_error(mock_api_cls):
+    from app.tools_k8s import list_deployments
+
+    mock_api = MagicMock()
+    mock_api_cls.return_value = mock_api
+    mock_api.list_deployment_for_all_namespaces.side_effect = Exception("unauthorized")
+
+    result = list_deployments.invoke({"namespace": None})
+
+    assert result["ok"] is False
+    assert "unauthorized" in result["error"]
