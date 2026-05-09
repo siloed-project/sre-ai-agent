@@ -63,7 +63,8 @@ The tool reads the pod spec first to enumerate containers, then routes as follow
 |----------|-----------|
 | Pod not found | `ok=False`, Kubernetes API exception message |
 | Container name invalid | `ok=False`, error lists valid container names |
-| `previous=True` but no previous instance | `ok=False`, `"No previous container instance found for <name>"` |
+| `previous=True` but no previous instance (single container) | `ok=False`, `"No previous container instance found for <name>"` |
+| `previous=True` + `all_containers=True` | Attempt previous logs per container; containers with no previous instance have their item set to `ok=False` with the above message, others succeed. Overall `ok=True` if at least one container succeeded |
 | Empty logs | `ok=True`, `logs=""`, `lines_returned=0` |
 | `tail_lines > 200` | Silently clamped to 200; no error |
 | Any other API exception | `ok=False`, exception message |
