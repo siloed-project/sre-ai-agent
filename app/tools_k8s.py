@@ -265,3 +265,86 @@ def get_deployment(namespace: str, name: str) -> dict:
         return ToolResult(ok=True, items=[item], error=None)
     except Exception as e:
         return ToolResult(ok=False, items=[], error=str(e))
+
+
+@tool
+def get_pod_logs(
+    namespace: str,
+    name: str,
+    container: str | None = None,
+    tail_lines: int = 100,
+    previous: bool = False,
+    all_containers: bool = False,
+) -> dict:
+    """Fetch logs from a pod's container(s).
+
+    Args:
+        namespace: Kubernetes namespace where the pod lives.
+        name: Name of the pod.
+        container: Container name. Required when the pod has multiple containers,
+            unless all_containers=True. Ignored when all_containers=True.
+        tail_lines: Number of log lines to fetch (default 100, capped at 200).
+        previous: If True, fetch logs from the previous (crashed/terminated) container instance.
+        all_containers: If True, fetch logs from every container in the pod.
+    """
+    try:
+        v1 = client.CoreV1Api()
+        pod = v1.read_namespaced_pod(name=name, namespace=namespace)
+        container_names = [c.name for c in pod.spec.containers]
+        capped = min(tail_lines, 200)
+
+        def _fetch(cname: str) -> dict:
+            try:
+                logs = v1.read_namespaced_pod_log(
+                    name=name,
+                    namespace=namespace,
+                    container=cname,
+                    tail_lines=capped,
+                    previous=previous,
+                )
+                return {
+                    "container": cname,
+                    "previous": previous,
+                    "lines_returned": len(logs.splitlines()),
+                    "logs": logs,
+                }
+            except Exception as e:
+                return {
+                    "container": cname,
+                    "previous": previous,
+                    "lines_returned": 0,
+                    "logs": "",
+                    "error": str(e),
+                }
+
+        if all_containers:
+            items = [_fetch(cname) for cname in container_names]
+            ok = any("error" not in item for item in items)
+            return ToolResult(ok=ok, items=items, error=None)
+
+        if len(container_names) > 1:
+            if container is None:
+                names_str = ", ".join(container_names)
+                return ToolResult(
+                    ok=False,
+                    items=[],
+                    error=f"Pod has multiple containers: [{names_str}]. Specify container=<name> or all_containers=True.",
+                )
+            if container not in container_names:
+                names_str = ", ".join(container_names)
+                return ToolResult(
+                    ok=False,
+                    items=[],
+                    error=f"Container '{container}' not found. Valid containers: [{names_str}].",
+                )
+            target = container
+        else:
+            target = container_names[0]
+
+        item = _fetch(target)
+        if "error" in item:
+            return ToolResult(ok=False, items=[], error=item["error"])
+        return ToolResult(ok=True, items=[item], error=None)
+
+    except Exception as e:
+        return ToolResult(ok=False, items=[], error=str(e))
