@@ -5,13 +5,14 @@ from app.prompts import SYSTEM_PROMPT
 from app.tools_k8s import (
     get_deployment,
     get_pod,
+    get_pod_logs,
     list_deployments,
     list_events,
     list_nodes,
     list_pods,
 )
 
-TOOLS = [list_pods, list_nodes, list_events, list_deployments, get_pod, get_deployment]
+TOOLS = [list_pods, list_nodes, list_events, list_deployments, get_pod, get_deployment, get_pod_logs]
 
 
 def build_agent():

@@ -17,7 +17,7 @@ def test_build_agent_registers_all_six_tools(mock_anthropic_cls):
     mock_anthropic_cls.return_value = MagicMock()
     from app.graph import build_agent, TOOLS
 
-    assert len(TOOLS) == 6
+    assert len(TOOLS) == 7
     tool_names = {t.name for t in TOOLS}
     assert tool_names == {
         "list_pods",
@@ -26,4 +26,5 @@ def test_build_agent_registers_all_six_tools(mock_anthropic_cls):
         "list_deployments",
         "get_pod",
         "get_deployment",
+        "get_pod_logs",
     }
