@@ -37,4 +37,10 @@ docker run --rm -v ~/.kube/config:/root/.kube/config:ro -e ANTHROPIC_API_KEY=...
 
 docker run --rm -v ~/.kube/config:/root/.kube/config:ro -e ANTHROPIC_API_KEY=... sre-agent \
   "Are there any pods restarting frequently?"
+
+docker run --rm -v ~/.kube/config:/root/.kube/config:ro -e ANTHROPIC_API_KEY=... sre-agent \
+  "Show me the last 50 lines of logs from the api pod in the payments namespace."
+
+docker run --rm -v ~/.kube/config:/root/.kube/config:ro -e ANTHROPIC_API_KEY=... sre-agent \
+  "What was the api pod logging before it crashed?"
 ```

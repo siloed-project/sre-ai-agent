@@ -55,7 +55,7 @@ sre-ai-agent/
 
 ### `app/tools_k8s.py`
 
-Six `@tool`-decorated functions registered with the ReAct agent:
+Seven `@tool`-decorated functions registered with the ReAct agent:
 
 | Tool | Parameters | Purpose |
 |------|-----------|---------|
@@ -65,6 +65,7 @@ Six `@tool`-decorated functions registered with the ReAct agent:
 | `list_deployments` | `namespace: str \| None` | List deployments with ready/desired replicas |
 | `get_pod` | `namespace: str, name: str` | Detailed pod info: containers, conditions, events |
 | `get_deployment` | `namespace: str, name: str` | Detailed deployment info: conditions, replica status |
+| `get_pod_logs` | `namespace: str, name: str, container: str \| None, tail_lines: int, previous: bool, all_containers: bool` | Fetch container logs; supports multi-container pods, previous-instance logs, and per-container or all-at-once retrieval |
 
 All tools return a consistent shape:
 ```python
