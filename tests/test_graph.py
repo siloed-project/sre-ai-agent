@@ -13,7 +13,7 @@ def test_build_agent_returns_runnable(mock_anthropic_cls):
 
 
 @patch("app.graph.ChatAnthropic")
-def test_build_agent_registers_all_six_tools(mock_anthropic_cls):
+def test_build_agent_registers_all_tools(mock_anthropic_cls):
     mock_anthropic_cls.return_value = MagicMock()
     from app.graph import build_agent, TOOLS
 
