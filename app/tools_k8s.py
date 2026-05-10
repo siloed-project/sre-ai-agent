@@ -291,6 +291,8 @@ def get_pod_logs(
         v1 = client.CoreV1Api()
         pod = v1.read_namespaced_pod(name=name, namespace=namespace)
         container_names = [c.name for c in pod.spec.containers]
+        if not container_names:
+            return ToolResult(ok=False, items=[], error="Pod has no containers in spec.")
         capped = min(tail_lines, 200)
 
         def _fetch(cname: str) -> dict:
@@ -339,6 +341,12 @@ def get_pod_logs(
                 )
             target = container
         else:
+            if container is not None and container != container_names[0]:
+                return ToolResult(
+                    ok=False,
+                    items=[],
+                    error=f"Container '{container}' not found. Valid containers: [{container_names[0]}].",
+                )
             target = container_names[0]
 
         item = _fetch(target)
