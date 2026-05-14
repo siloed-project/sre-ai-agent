@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Every feature must be developed on its own branch and merged via a pull request — no feature commits directly to `main`.
 
+When making any change, update the relevant documentation: `README.md` for user-facing behaviour (CLI usage, Docker commands, new env vars), and this file for architecture or development workflow changes.
+
 ## Commands
 
 ```bash
