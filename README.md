@@ -23,6 +23,85 @@ docker run --rm \
   sre-agent "Which pods are unhealthy?"
 ```
 
+## Telegram Bot (systemd on VPS)
+
+The agent also runs as an interactive Telegram bot, deployed as a systemd service on any Linux VPS. It answers the same read-only Kubernetes questions sent via Telegram from an allowlisted chat ID.
+
+### Prerequisites
+
+- A Linux VPS with SSH root access
+- A Telegram bot token (from [@BotFather](https://t.me/BotFather))
+- A kubeconfig scoped to a read-only ServiceAccount
+- `ANTHROPIC_API_KEY`
+
+### Setup
+
+On the VPS:
+
+```bash
+# Create a system user
+useradd --system --no-create-home --shell /usr/sbin/nologin sre-agent
+
+# Install dependencies and clone
+apt-get install -y python3 python3-venv git
+git clone https://github.com/siloed-project/sre-ai-agent.git /opt/sre-agent
+python3 -m venv /opt/sre-agent/.venv
+/opt/sre-agent/.venv/bin/pip install -r /opt/sre-agent/requirements.txt
+chown -R sre-agent:sre-agent /opt/sre-agent
+
+# Create secrets directory and env file
+mkdir -p /etc/sre-agent && chmod 700 /etc/sre-agent
+cat > /etc/sre-agent/env <<EOF
+ANTHROPIC_API_KEY=<your-key>
+TELEGRAM_BOT_TOKEN=<your-token>
+ALLOWED_CHAT_IDS=<comma-separated-chat-ids>
+KUBECONFIG=/etc/sre-agent/kubeconfig.yaml
+EOF
+chmod 600 /etc/sre-agent/env
+chown -R sre-agent:sre-agent /etc/sre-agent
+```
+
+Copy your kubeconfig to `/etc/sre-agent/kubeconfig.yaml` (mode 600, owned by `sre-agent`).
+
+Install the systemd service:
+
+```ini
+# /etc/systemd/system/sre-agent.service
+[Unit]
+Description=SRE AI Telegram Bot
+After=network.target
+
+[Service]
+User=sre-agent
+EnvironmentFile=/etc/sre-agent/env
+WorkingDirectory=/opt/sre-agent
+ExecStart=/opt/sre-agent/.venv/bin/python -m app.telegram_bot
+Restart=always
+RestartSec=10
+StartLimitIntervalSec=60
+StartLimitBurst=3
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+systemctl daemon-reload && systemctl enable --now sre-agent
+```
+
+### Updating after code changes
+
+```bash
+ssh root@<vps-ip> 'cd /opt/sre-agent && git pull && .venv/bin/pip install -r requirements.txt && systemctl restart sre-agent'
+```
+
+### Logs
+
+```bash
+ssh root@<vps-ip> 'journalctl -u sre-agent -f'
+```
+
 ## Example questions
 
 ```bash
