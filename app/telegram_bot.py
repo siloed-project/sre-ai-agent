@@ -28,3 +28,40 @@ def extract_answer(content: str) -> str:
     if len(text) <= TELEGRAM_MAX_LENGTH:
         return text
     return text[: TELEGRAM_MAX_LENGTH - 3] + "..."
+
+
+async def handle_message(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    agent,
+    allowed_chat_ids: frozenset[int],
+) -> None:
+    chat_id = update.effective_chat.id
+    if chat_id not in allowed_chat_ids:
+        logger.warning("Rejected message from chat_id=%s", chat_id)
+        return
+
+    reply = await update.message.reply_text("🔍 Investigating...")
+
+    try:
+        result = await asyncio.wait_for(
+            asyncio.to_thread(
+                agent.invoke, {"messages": [HumanMessage(content=update.message.text)]}
+            ),
+            timeout=AGENT_TIMEOUT,
+        )
+        content = result["messages"][-1].content
+        if isinstance(content, list):
+            content = " ".join(
+                block.get("text", "")
+                for block in content
+                if isinstance(block, dict)
+            ) or "Agent did not produce a text response."
+        answer = extract_answer(content)
+    except asyncio.TimeoutError:
+        answer = f"Investigation timed out after {AGENT_TIMEOUT} seconds."
+    except Exception as e:
+        logger.exception("Agent error for chat_id=%s", chat_id)
+        answer = f"Error: {e}"
+
+    await reply.edit_text(answer)
