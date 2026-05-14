@@ -19,3 +19,12 @@ def parse_allowed_chat_ids(value: str) -> frozenset[int]:
     if not value.strip():
         raise ValueError("ALLOWED_CHAT_IDS must not be empty")
     return frozenset(int(x.strip()) for x in value.split(","))
+
+
+def extract_answer(content: str) -> str:
+    """Extract Answer: section from agent output and truncate to Telegram's limit."""
+    idx = content.find("Answer:")
+    text = content[idx:] if idx != -1 else content
+    if len(text) <= TELEGRAM_MAX_LENGTH:
+        return text
+    return text[: TELEGRAM_MAX_LENGTH - 3] + "..."
