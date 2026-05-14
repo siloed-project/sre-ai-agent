@@ -65,3 +65,30 @@ async def handle_message(
         answer = f"Error: {e}"
 
     await reply.edit_text(answer)
+
+
+def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
+    token = os.environ["TELEGRAM_BOT_TOKEN"]
+    allowed_chat_ids = parse_allowed_chat_ids(os.environ["ALLOWED_CHAT_IDS"])
+
+    logger.info("Initialising SRE agent...")
+    agent = build_agent()
+    logger.info("Agent ready. Allowed chat IDs: %s", allowed_chat_ids)
+
+    app = Application.builder().token(token).build()
+
+    async def _handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        await handle_message(update, context, agent, allowed_chat_ids)
+
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, _handler))
+    logger.info("Starting long-polling...")
+    app.run_polling()
+
+
+if __name__ == "__main__":
+    main()
