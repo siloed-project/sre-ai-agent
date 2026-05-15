@@ -367,3 +367,18 @@ ssh root@46.224.239.116 'systemctl status sre-agent --no-pager'
 ```
 
 Expected: `Active: active (running)`
+
+---
+
+## Operational Note: If the VPS IP Changes
+
+The VPS IP only changes if the server is deleted and recreated — Hetzner preserves the IP across stop/start cycles. If it does change (e.g. after `hcloud server delete sre-agent` + `task sre-agent:create-vps`), two things must be updated:
+
+1. **Update the `VPS_IP` GitHub secret** — go to `https://github.com/siloed-project/sre-ai-agent/settings/secrets/actions` and update `VPS_IP` to the new IP. The `ssh-keyscan` step in the workflow runs fresh on every deploy so `known_hosts` self-corrects automatically.
+
+2. **Re-run the VPS setup** — the new server has no `deploy` user yet. Repeat the full sequence:
+   ```bash
+   ANTHROPIC_API_KEY=<key> TELEGRAM_BOT_TOKEN=<token> task sre-agent:setup-vps
+   DEPLOY_PUBKEY_PATH=~/.ssh/sre-agent-deploy.pub task sre-agent:setup-deploy-user
+   ```
+   The deploy key pair (`~/.ssh/sre-agent-deploy`) does not need to be regenerated — the existing private key in GitHub secrets stays valid.
