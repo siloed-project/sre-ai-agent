@@ -107,7 +107,10 @@ git push → main
 ## One-Time Setup Sequence (operator steps, not automated)
 
 1. `ssh-keygen -t ed25519 -C "github-actions-deploy" -f ~/.ssh/sre-agent-deploy -N ""`
-2. `DEPLOY_PUBKEY_PATH=~/.ssh/sre-agent-deploy.pub task sre-agent:setup-deploy-user`  (from `siloed-project/infra/`)
+2. From `siloed-project/infra/`:
+   ```bash
+   DEPLOY_PUBKEY_PATH=~/.ssh/sre-agent-deploy.pub task sre-agent:setup-deploy-user
+   ```
 3. Add `VPS_SSH_PRIVATE_KEY` (contents of `~/.ssh/sre-agent-deploy`) to GitHub repo secrets
 4. Add `VPS_IP` (`46.224.239.116`) to GitHub repo secrets
 
