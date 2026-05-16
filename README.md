@@ -102,6 +102,13 @@ ssh root@<vps-ip> 'cd /opt/sre-agent && git pull && .venv/bin/pip install -r req
 ssh root@<vps-ip> 'journalctl -u sre-agent -f'
 ```
 
+### If the VPS IP changes
+
+The VPS IP only changes if the server is deleted and recreated — Hetzner preserves the IP across stop/start cycles. If it does change:
+
+1. Update the `VPS_IP` secret in the GitHub repo (Settings → Secrets → Actions).
+2. Re-run `setup-vps` and `setup-deploy-user` on the new server — the existing deploy key in GitHub secrets stays valid and does not need to be regenerated.
+
 ## Example questions
 
 ```bash
