@@ -92,8 +92,11 @@ systemctl daemon-reload && systemctl enable --now sre-agent
 
 ### Updating after code changes
 
+Deployment is automatic: push to `main` triggers GitHub Actions, which runs tests and deploys to the VPS if they pass.
+
+**Manual override** (emergency rollback or off-pipeline fix):
 ```bash
-ssh root@<vps-ip> 'cd /opt/sre-agent && git pull && .venv/bin/pip install -r requirements.txt && systemctl restart sre-agent'
+ssh root@<vps-ip> 'cd /opt/sre-agent && git reset --hard <sha> && .venv/bin/pip install -r requirements.txt && systemctl restart sre-agent'
 ```
 
 ### Logs
