@@ -157,32 +157,89 @@ When these vars are set, every agent run emits a trace to LangFuse. When they ar
 
 **Configure model pricing:** In the LangFuse UI go to Settings → Models and add entries for `claude-haiku-4-5-20251001`, `claude-sonnet-4-6`, and `claude-opus-4-7` with their input/output cost per million tokens. LangFuse will then attribute cost to every trace automatically.
 
-### Expose the dashboard (optional)
+### Expose the dashboard on a VPS (optional)
 
-A custom login page + nginx reverse proxy can sit in front of LangFuse.  Cloudflare DNS is optional — the setup works on plain HTTP for local/dev use.
+A custom login page + nginx reverse proxy sits in front of LangFuse. Cloudflare DNS is optional — the setup works on plain HTTP for local/dev use.
 
-Copy `.env.dashboard.example` to `.env.dashboard` and fill in the values:
+Three pieces run as separate systemd services (unit files are in `systemd/`):
+
+| Service | Unit file | What it does |
+|---|---|---|
+| LangFuse stack | `sre-agent-langfuse.service` | Runs `docker compose` for LangFuse + Postgres |
+| Auth server | `sre-agent-auth.service` | Serves the login page on `127.0.0.1:8081` |
+| nginx | system `nginx.service` | Reverse proxy; already managed by systemd |
+
+#### 1. Create secret files on the VPS
+
+```bash
+# LangFuse secrets (copy from .env.langfuse.example and fill in values)
+cp /opt/sre-agent/.env.langfuse.example /etc/sre-agent/langfuse.env
+chmod 600 /etc/sre-agent/langfuse.env
+chown sre-agent:sre-agent /etc/sre-agent/langfuse.env
+```
+
+Fill in `/etc/sre-agent/langfuse.env`:
 
 | Variable | What to put here |
 |---|---|
-| `DASHBOARD_USERNAME` | Login username for the dashboard, e.g. `admin` |
-| `DASHBOARD_PASSWORD` | A strong password of your choice |
-| `DASHBOARD_SECRET` | 32-char random string used to sign session cookies — `openssl rand -hex 16` |
+| `POSTGRES_USER` | Any username, e.g. `langfuse` |
+| `POSTGRES_PASSWORD` | Strong random password — `openssl rand -hex 20` |
+| `POSTGRES_DB` | Any database name, e.g. `langfuse` |
+| `DATABASE_URL` | Must match above: `postgresql://langfuse:<password>@langfuse-db:5432/langfuse` |
+| `NEXTAUTH_URL` | Public URL of the dashboard, e.g. `https://sre-agent.example.com` |
+| `NEXTAUTH_SECRET` | 32-char random string — `openssl rand -hex 16` |
+| `SALT` | 16-char random string — `openssl rand -hex 8` |
 
 ```bash
-# Auth server (requires itsdangerous)
-cp .env.dashboard.example .env.dashboard   # edit the file with the values above
-export $(cat .env.dashboard | xargs)
-python scripts/auth_server.py &
-
-# nginx (copy config from nginx/ and install)
-sudo cp nginx/langfuse-proxy.conf /etc/nginx/snippets/langfuse-proxy.conf
-sudo cp nginx/sre-agent.conf /etc/nginx/sites-available/sre-agent.conf
-sudo ln -sf /etc/nginx/sites-available/sre-agent.conf /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
+# Dashboard auth secrets (copy from .env.dashboard.example and fill in values)
+cp /opt/sre-agent/.env.dashboard.example /etc/sre-agent/dashboard.env
+chmod 600 /etc/sre-agent/dashboard.env
+chown sre-agent:sre-agent /etc/sre-agent/dashboard.env
 ```
 
-To enable HTTPS, uncomment the TLS server block in `nginx/sre-agent.conf` and add your certificate.
+Fill in `/etc/sre-agent/dashboard.env`:
+
+| Variable | What to put here |
+|---|---|
+| `DASHBOARD_USERNAME` | Login username, e.g. `admin` |
+| `DASHBOARD_PASSWORD` | A strong password of your choice |
+| `DASHBOARD_SECRET` | 32-char random string to sign session cookies — `openssl rand -hex 16` |
+
+#### 2. Install and enable the systemd services
+
+```bash
+# LangFuse docker-compose service
+cp /opt/sre-agent/systemd/sre-agent-langfuse.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now sre-agent-langfuse
+
+# Auth server
+cp /opt/sre-agent/systemd/sre-agent-auth.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now sre-agent-auth
+```
+
+#### 3. Configure nginx
+
+```bash
+apt-get install -y nginx
+cp /opt/sre-agent/nginx/langfuse-proxy.conf /etc/nginx/snippets/langfuse-proxy.conf
+cp /opt/sre-agent/nginx/sre-agent.conf /etc/nginx/sites-available/sre-agent.conf
+ln -sf /etc/nginx/sites-available/sre-agent.conf /etc/nginx/sites-enabled/
+nginx -t && systemctl enable --now nginx
+```
+
+To enable HTTPS, uncomment the TLS server block in `nginx/sre-agent.conf` and add your certificate path.
+
+#### Check status
+
+```bash
+systemctl status sre-agent-langfuse
+systemctl status sre-agent-auth
+systemctl status nginx
+journalctl -u sre-agent-langfuse -f
+journalctl -u sre-agent-auth -f
+```
 
 ### Trace retention
 
