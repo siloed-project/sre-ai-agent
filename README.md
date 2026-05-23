@@ -118,6 +118,66 @@ The VPS IP only changes if the server is deleted and recreated — Hetzner prese
 1. Update the `VPS_IP` secret in the GitHub repo (Settings → Secrets → Actions).
 2. Re-run `setup-vps` and `setup-deploy-user` on the new server — the existing deploy key in GitHub secrets stays valid and does not need to be regenerated.
 
+## Observability (LangFuse)
+
+The agent traces every tool call and LLM turn through [LangFuse](https://langfuse.com) when configured.
+
+### Start LangFuse locally
+
+```bash
+cp .env.langfuse.example .env.langfuse   # fill in passwords and secrets
+docker compose -f docker-compose.langfuse.yml up -d
+```
+
+LangFuse is bound to `127.0.0.1:3000` (loopback only — not public). Visit `http://localhost:3000` to set up your first user, then create a project and copy the API keys.
+
+### Configure the agent
+
+Add to `.env`:
+
+```
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_HOST=http://localhost:3000
+```
+
+When these vars are set, every agent run emits a trace to LangFuse. When they are absent, tracing is silently skipped and only structured stdout logging is produced.
+
+**Configure model pricing:** In the LangFuse UI go to Settings → Models and add entries for `claude-haiku-4-5-20251001`, `claude-sonnet-4-6`, and `claude-opus-4-7` with their input/output cost per million tokens. LangFuse will then attribute cost to every trace automatically.
+
+### Expose the dashboard (optional)
+
+A custom login page + nginx reverse proxy can sit in front of LangFuse.  Cloudflare DNS is optional — the setup works on plain HTTP for local/dev use.
+
+```bash
+# Auth server (requires itsdangerous)
+cp .env.dashboard.example .env.dashboard   # fill in username, password, secret
+export $(cat .env.dashboard | xargs)
+python scripts/auth_server.py &
+
+# nginx (copy config from nginx/ and install)
+sudo cp nginx/langfuse-proxy.conf /etc/nginx/snippets/langfuse-proxy.conf
+sudo cp nginx/sre-agent.conf /etc/nginx/sites-available/sre-agent.conf
+sudo ln -sf /etc/nginx/sites-available/sre-agent.conf /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+To enable HTTPS, uncomment the TLS server block in `nginx/sre-agent.conf` and add your certificate.
+
+### Trace retention
+
+Delete traces older than 30 days (configurable via `LANGFUSE_RETENTION_DAYS`):
+
+```bash
+python scripts/cleanup_langfuse.py
+```
+
+Cron example (runs at 02:00 daily):
+
+```
+0 2 * * * /opt/sre-agent/.venv/bin/python /opt/sre-agent/scripts/cleanup_langfuse.py
+```
+
 ## Example questions
 
 ```bash

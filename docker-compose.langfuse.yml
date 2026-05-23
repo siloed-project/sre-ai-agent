@@ -1,0 +1,26 @@
+services:
+  langfuse:
+    image: langfuse/langfuse:latest
+    ports:
+      - "127.0.0.1:3000:3000"
+    env_file: .env.langfuse
+    environment:
+      AUTH_DISABLE_SIGNUP: "true"
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  langfuse-db:
+    image: postgres:15-alpine
+    env_file: .env.langfuse
+    volumes:
+      - langfuse_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  langfuse_db_data:

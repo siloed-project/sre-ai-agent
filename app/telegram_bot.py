@@ -9,6 +9,7 @@ from telegram import Update
 from telegram.ext import Application, ContextTypes, MessageHandler, filters
 
 from app.graph import build_agent
+from app.observability import make_callbacks, setup_logging
 
 logger = logging.getLogger(__name__)
 
@@ -45,13 +46,16 @@ async def handle_message(
 
     reply = await update.message.reply_text("🔍 Investigating...")
 
+    callbacks, handler = make_callbacks()
+    timed_out = False
     try:
         config = {"configurable": {"thread_id": str(chat_id)}}
         result = await asyncio.wait_for(
             asyncio.to_thread(
-                agent.invoke,
-                {"messages": [HumanMessage(content=update.message.text)]},
-                config,
+                lambda: agent.invoke(
+                    {"messages": [HumanMessage(content=update.message.text)]},
+                    config={**config, "callbacks": callbacks},
+                )
             ),
             timeout=AGENT_TIMEOUT,
         )
@@ -64,19 +68,19 @@ async def handle_message(
             ) or "Agent did not produce a text response."
         answer = extract_answer(content)
     except asyncio.TimeoutError:
+        timed_out = True
         answer = f"Investigation timed out after {AGENT_TIMEOUT} seconds."
     except Exception as e:
         logger.exception("Agent error for chat_id=%s", chat_id)
         answer = f"Error: {e}"
+    finally:
+        handler.emit_request_summary(update.message.text, timed_out=timed_out)
 
     await reply.edit_text(answer)
 
 
 def main() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
+    setup_logging()
 
     token = os.environ["TELEGRAM_BOT_TOKEN"]
     allowed_chat_ids = parse_allowed_chat_ids(os.environ["ALLOWED_CHAT_IDS"])
