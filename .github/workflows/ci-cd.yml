@@ -43,5 +43,5 @@ jobs:
             .venv/bin/pip install -q -r requirements.txt
             sudo systemctl restart sre-agent
             sleep 5
-            sudo systemctl is-active --quiet sre-agent
+            systemctl is-active --quiet sre-agent
           '
