@@ -124,8 +124,20 @@ The agent traces every tool call and LLM turn through [LangFuse](https://langfus
 
 ### Start LangFuse locally
 
+Copy `.env.langfuse.example` to `.env.langfuse` and fill in the values:
+
+| Variable | What to put here |
+|---|---|
+| `POSTGRES_USER` | Any username, e.g. `langfuse` |
+| `POSTGRES_PASSWORD` | A strong random password — `openssl rand -hex 20` |
+| `POSTGRES_DB` | Any database name, e.g. `langfuse` |
+| `DATABASE_URL` | Must match the user/password/db above: `postgresql://langfuse:<password>@langfuse-db:5432/langfuse` |
+| `NEXTAUTH_URL` | The public URL of the dashboard, e.g. `https://sre-agent.example.com` or `http://localhost:3000` for local use |
+| `NEXTAUTH_SECRET` | 32-char random string — `openssl rand -hex 16` |
+| `SALT` | 16-char random string — `openssl rand -hex 8` |
+
 ```bash
-cp .env.langfuse.example .env.langfuse   # fill in passwords and secrets
+cp .env.langfuse.example .env.langfuse   # edit the file with the values above
 docker compose -f docker-compose.langfuse.yml up -d
 ```
 
@@ -149,9 +161,17 @@ When these vars are set, every agent run emits a trace to LangFuse. When they ar
 
 A custom login page + nginx reverse proxy can sit in front of LangFuse.  Cloudflare DNS is optional — the setup works on plain HTTP for local/dev use.
 
+Copy `.env.dashboard.example` to `.env.dashboard` and fill in the values:
+
+| Variable | What to put here |
+|---|---|
+| `DASHBOARD_USERNAME` | Login username for the dashboard, e.g. `admin` |
+| `DASHBOARD_PASSWORD` | A strong password of your choice |
+| `DASHBOARD_SECRET` | 32-char random string used to sign session cookies — `openssl rand -hex 16` |
+
 ```bash
 # Auth server (requires itsdangerous)
-cp .env.dashboard.example .env.dashboard   # fill in username, password, secret
+cp .env.dashboard.example .env.dashboard   # edit the file with the values above
 export $(cat .env.dashboard | xargs)
 python scripts/auth_server.py &
 
