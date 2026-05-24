@@ -1,0 +1,10 @@
+[Unit]
+Description=SRE Agent LangFuse trace cleanup
+After=network.target sre-agent-langfuse.service
+
+[Service]
+Type=oneshot
+User=sre-agent
+EnvironmentFile=/etc/sre-agent/langfuse.env
+WorkingDirectory=/opt/sre-agent
+ExecStart=/opt/sre-agent/.venv/bin/python scripts/cleanup_langfuse.py

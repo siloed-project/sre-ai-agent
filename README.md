@@ -167,6 +167,7 @@ Three pieces run as separate systemd services (unit files are in `systemd/`):
 |---|---|---|
 | LangFuse stack | `sre-agent-langfuse.service` | Runs `docker compose` for LangFuse + Postgres |
 | Auth server | `sre-agent-auth.service` | Serves the login page on `127.0.0.1:8081` |
+| Trace cleanup | `sre-agent-cleanup.service` + `.timer` | Deletes old traces daily |
 | nginx | system `nginx.service` | Reverse proxy; already managed by systemd |
 
 #### 1. Create secret files on the VPS
@@ -210,13 +211,16 @@ Fill in `/etc/sre-agent/dashboard.env`:
 ```bash
 # LangFuse docker-compose service
 cp /opt/sre-agent/systemd/sre-agent-langfuse.service /etc/systemd/system/
-systemctl daemon-reload
-systemctl enable --now sre-agent-langfuse
 
 # Auth server
 cp /opt/sre-agent/systemd/sre-agent-auth.service /etc/systemd/system/
+
+# Trace cleanup (timer fires daily, with up to 1h random delay to spread load)
+cp /opt/sre-agent/systemd/sre-agent-cleanup.service /etc/systemd/system/
+cp /opt/sre-agent/systemd/sre-agent-cleanup.timer /etc/systemd/system/
+
 systemctl daemon-reload
-systemctl enable --now sre-agent-auth
+systemctl enable --now sre-agent-langfuse sre-agent-auth sre-agent-cleanup.timer
 ```
 
 #### 3. Configure nginx
@@ -234,9 +238,7 @@ To enable HTTPS, uncomment the TLS server block in `nginx/sre-agent.conf` and ad
 #### Check status
 
 ```bash
-systemctl status sre-agent-langfuse
-systemctl status sre-agent-auth
-systemctl status nginx
+systemctl status sre-agent-langfuse sre-agent-auth sre-agent-cleanup.timer nginx
 journalctl -u sre-agent-langfuse -f
 journalctl -u sre-agent-auth -f
 ```
@@ -269,16 +271,17 @@ That's it — Cloudflare handles TLS termination and the HTTP server block on th
 
 ### Trace retention
 
-Delete traces older than 30 days (configurable via `LANGFUSE_RETENTION_DAYS`):
+`sre-agent-cleanup.timer` (installed in step 2 above) runs `scripts/cleanup_langfuse.py` once a day and deletes traces older than `LANGFUSE_RETENTION_DAYS` (default: 30). Check its status with:
 
 ```bash
-python scripts/cleanup_langfuse.py
+systemctl status sre-agent-cleanup.timer
+journalctl -u sre-agent-cleanup.service
 ```
 
-Cron example (runs at 02:00 daily):
+To run it manually at any time:
 
-```
-0 2 * * * /opt/sre-agent/.venv/bin/python /opt/sre-agent/scripts/cleanup_langfuse.py
+```bash
+systemctl start sre-agent-cleanup.service
 ```
 
 ## Example questions
