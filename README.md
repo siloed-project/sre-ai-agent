@@ -241,6 +241,32 @@ journalctl -u sre-agent-langfuse -f
 journalctl -u sre-agent-auth -f
 ```
 
+#### 4. Point a domain via Cloudflare (optional)
+
+If you want the dashboard reachable at a public URL (e.g. `https://sre-agent.siloed.dev`) you can proxy it through Cloudflare — this gives you free TLS without managing certificates yourself.
+
+1. **Add a DNS record** in the Cloudflare dashboard for your domain:
+   - Type: `A`
+   - Name: `sre-agent` (or whatever subdomain you want)
+   - IPv4 address: your VPS public IP
+   - Proxy status: **Proxied** (orange cloud)
+
+2. **Set SSL/TLS mode** to **Full** (Cloudflare dashboard → SSL/TLS → Overview). This tells Cloudflare to encrypt traffic to your VPS over HTTP without requiring a trusted cert on the server side — the nginx server block on port 80 is enough.
+
+3. **Update `NEXTAUTH_URL`** in `/etc/sre-agent/langfuse.env` to match the public URL:
+   ```
+   NEXTAUTH_URL=https://sre-agent.siloed.dev
+   ```
+   Then restart LangFuse: `systemctl restart sre-agent-langfuse`
+
+4. **Update the nginx server name** in `/etc/nginx/sites-available/sre-agent.conf`:
+   ```nginx
+   server_name sre-agent.siloed.dev;
+   ```
+   Then reload: `nginx -t && systemctl reload nginx`
+
+That's it — Cloudflare handles TLS termination and the HTTP server block on the VPS serves the proxied traffic. The HTTPS TLS block in `nginx/sre-agent.conf` is only needed if you want end-to-end encryption between Cloudflare and your VPS (SSL/TLS mode **Full (strict)**), in which case you'd add a Cloudflare origin certificate at the path shown in the commented block.
+
 ### Trace retention
 
 Delete traces older than 30 days (configurable via `LANGFUSE_RETENTION_DAYS`):
