@@ -1,6 +1,6 @@
 # SRE Q&A Agent
 
-A local CLI agent that answers read-only questions about a Kubernetes cluster using Claude Haiku.
+An agent, which can be reached by a Telegram bot and pure CLI that answers read-only questions about a Kubernetes cluster using Claude Haiku.
 
 ## Requirements
 
