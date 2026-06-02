@@ -44,6 +44,7 @@ docker run --rm \
 - `ANTHROPIC_API_KEY` — required for both CLI and Telegram bot
 - `TELEGRAM_BOT_TOKEN` — required for the Telegram bot
 - `ALLOWED_CHAT_IDS` — comma-separated list of Telegram chat IDs allowed to query the bot
+- `MEMORY_DB_PATH` — path to the SQLite file for conversation memory (default: `/var/lib/sre-agent/memory.db`); directory is created automatically on first run
 
 Copy `.env.example` to `.env` and fill in values. `app/main.py` loads `.env` via `python-dotenv`.
 
@@ -53,7 +54,7 @@ This is a **read-only SRE Q&A agent** built on LangChain + LangGraph that transl
 
 **Request flow:**
 1. Question enters via CLI (`app/main.py`) or Telegram bot (`app/telegram_bot.py`)
-2. Both build the agent via `app/graph.py::build_agent()`, which wires `ChatAnthropic` (claude-haiku-4-5-20251001) together with a fixed set of K8s tools using `langchain.agents.create_agent`
+2. Both build the agent via `app/graph.py::build_agent()`, which wires `ChatAnthropic` (claude-haiku-4-5-20251001) together with a fixed set of K8s tools using `langgraph.prebuilt.create_react_agent`
 3. The agent follows the structured 4-step investigation sequence defined in `app/prompts.py` — always starting with a cluster-wide scan before any namespaced lookups
 4. K8s tools in `app/tools_k8s.py` call the official `kubernetes` Python client; each returns a `ToolResult` TypedDict (`ok`, `items`, `error`) defined in `app/schemas.py`
 
@@ -61,7 +62,9 @@ This is a **read-only SRE Q&A agent** built on LangChain + LangGraph that transl
 
 **Result capping:** All list tools cap at `_MAX_ITEMS = 50`, sorting unhealthy/unavailable resources first to prioritize signal within the LLM context window.
 
-**Telegram bot specifics:** `handle_message` enforces `ALLOWED_CHAT_IDS`, wraps the synchronous agent in `asyncio.to_thread`, applies a 120-second timeout, and truncates output to Telegram's 4096-character limit. Only the `Answer:` section is sent to Telegram; the full `Investigation:` trace stays server-side.
+**Conversation memory:** The Telegram bot uses a `SqliteSaver` checkpointer (from `langgraph-checkpoint-sqlite`) keyed by `str(chat_id)` — each Telegram chat has its own persistent thread that survives bot restarts. The CLI is stateless; each invocation is independent. The SQLite file lives at `MEMORY_DB_PATH` (default `/var/lib/sre-agent/memory.db`), outside the git working directory so it survives `git reset --hard` deploys.
+
+**Telegram bot specifics:** `handle_message` enforces `ALLOWED_CHAT_IDS`, wraps the synchronous agent in `asyncio.to_thread` (with `check_same_thread=False` on the SQLite connection), applies a 120-second timeout, and truncates output to Telegram's 4096-character limit. Only the `Answer:` section is sent to Telegram; the full `Investigation:` trace stays server-side.
 
 ## Related repositories
 

@@ -1,8 +1,10 @@
 import asyncio
 import logging
 import os
+import sqlite3
 
 from langchain_core.messages import HumanMessage
+from langgraph.checkpoint.sqlite import SqliteSaver
 from telegram import Update
 from telegram.ext import Application, ContextTypes, MessageHandler, filters
 
@@ -44,9 +46,12 @@ async def handle_message(
     reply = await update.message.reply_text("🔍 Investigating...")
 
     try:
+        config = {"configurable": {"thread_id": str(chat_id)}}
         result = await asyncio.wait_for(
             asyncio.to_thread(
-                agent.invoke, {"messages": [HumanMessage(content=update.message.text)]}
+                agent.invoke,
+                {"messages": [HumanMessage(content=update.message.text)]},
+                config,
             ),
             timeout=AGENT_TIMEOUT,
         )
@@ -77,7 +82,11 @@ def main() -> None:
     allowed_chat_ids = parse_allowed_chat_ids(os.environ["ALLOWED_CHAT_IDS"])
 
     logger.info("Initialising SRE agent...")
-    agent = build_agent()
+    db_path = os.environ.get("MEMORY_DB_PATH", "/var/lib/sre-agent/memory.db")
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    conn = sqlite3.connect(db_path, check_same_thread=False)
+    checkpointer = SqliteSaver(conn)
+    agent = build_agent(checkpointer=checkpointer)
     logger.info("Agent ready. Allowed chat IDs: %s", allowed_chat_ids)
 
     app = Application.builder().token(token).build()

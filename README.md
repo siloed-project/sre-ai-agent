@@ -56,9 +56,15 @@ ANTHROPIC_API_KEY=<your-key>
 TELEGRAM_BOT_TOKEN=<your-token>
 ALLOWED_CHAT_IDS=<comma-separated-chat-ids>
 KUBECONFIG=/etc/sre-agent/kubeconfig.yaml
+MEMORY_DB_PATH=/var/lib/sre-agent/memory.db
 EOF
 chmod 600 /etc/sre-agent/env
 chown -R sre-agent:sre-agent /etc/sre-agent
+
+# Create the conversation memory directory
+mkdir -p /var/lib/sre-agent
+chown sre-agent:sre-agent /var/lib/sre-agent
+chmod 750 /var/lib/sre-agent
 ```
 
 Copy your kubeconfig to `/etc/sre-agent/kubeconfig.yaml` (mode 600, owned by `sre-agent`).
