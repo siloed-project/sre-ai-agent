@@ -41,6 +41,8 @@ jobs:
             git fetch
             git reset --hard origin/main
             .venv/bin/pip install -q -r requirements.txt
+            sudo mkdir -p /var/lib/sre-agent
+            sudo chown sre-agent:sre-agent /var/lib/sre-agent
             sudo systemctl restart sre-agent
             sleep 5
             systemctl is-active --quiet sre-agent
