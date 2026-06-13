@@ -1,0 +1,19 @@
+[Unit]
+Description=SRE AI Telegram Bot
+After=network.target
+
+[Service]
+User=sre-agent
+EnvironmentFile=/etc/sre-agent/env
+WorkingDirectory=/opt/sre-agent
+ExecStart=/opt/sre-agent/.venv/bin/python -m app.telegram_bot
+Restart=always
+RestartSec=10
+StartLimitIntervalSec=60
+StartLimitBurst=3
+TimeoutStopSec=15
+StateDirectory=sre-agent
+StateDirectoryMode=0750
+
+[Install]
+WantedBy=multi-user.target
