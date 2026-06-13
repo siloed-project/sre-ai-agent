@@ -57,8 +57,8 @@ jobs:
               traceback.print_exc()
               sys.exit(1)
           PYEOF
-            sudo mkdir -p /var/lib/sre-agent
-            sudo chown sre-agent:sre-agent /var/lib/sre-agent
+            sudo cp /opt/sre-agent/deploy/sre-agent.service /etc/systemd/system/sre-agent.service
+            sudo systemctl daemon-reload
             sudo systemctl restart sre-agent
             sleep 5
             systemctl is-active --quiet sre-agent || { systemctl status sre-agent --no-pager -l; exit 1; }
