@@ -82,7 +82,7 @@ def main() -> None:
     allowed_chat_ids = parse_allowed_chat_ids(os.environ["ALLOWED_CHAT_IDS"])
 
     logger.info("Initialising SRE agent...")
-    db_path = os.environ.get("MEMORY_DB_PATH", "memory.db")
+    db_path = os.environ.get("MEMORY_DB_PATH", "/var/lib/sre-agent/memory.db")
     db_dir = os.path.dirname(db_path)
     if db_dir:
         os.makedirs(db_dir, exist_ok=True)
