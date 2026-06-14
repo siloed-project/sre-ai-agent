@@ -161,14 +161,14 @@ When these vars are set, every agent run emits a trace to LangFuse. When they ar
 
 A custom login page + nginx reverse proxy sits in front of LangFuse. Cloudflare DNS is optional — the setup works on plain HTTP for local/dev use.
 
-Three pieces run as separate systemd services (unit files are in `systemd/`):
+Three pieces run as separate systemd services (unit files are in `deploy/`):
 
-| Service | Unit file | What it does |
-|---|---|---|
-| LangFuse stack | `sre-agent-langfuse.service` | Runs `docker compose` for LangFuse + Postgres |
-| Auth server | `sre-agent-auth.service` | Serves the login page on `127.0.0.1:8081` |
-| Trace cleanup | `sre-agent-cleanup.service` + `.timer` | Deletes old traces daily |
-| nginx | system `nginx.service` | Reverse proxy; already managed by systemd |
+| Service | Unit file | Auto-deployed? | What it does |
+|---|---|---|---|
+| LangFuse stack | `sre-agent-langfuse.service` | Unit file only | Runs `docker compose` for LangFuse + Postgres |
+| Auth server | `sre-agent-auth.service` | Yes — restarted on every deploy | Serves the login page on `127.0.0.1:8081` |
+| Trace cleanup | `sre-agent-cleanup.service` + `.timer` | Unit file only | Deletes old traces daily |
+| nginx | system `nginx.service` | No | Reverse proxy; already managed by systemd |
 
 #### 1. Create secret files on the VPS
 
@@ -210,14 +210,14 @@ Fill in `/etc/sre-agent/dashboard.env`:
 
 ```bash
 # LangFuse docker-compose service
-cp /opt/sre-agent/systemd/sre-agent-langfuse.service /etc/systemd/system/
+cp /opt/sre-agent/deploy/sre-agent-langfuse.service /etc/systemd/system/
 
 # Auth server
-cp /opt/sre-agent/systemd/sre-agent-auth.service /etc/systemd/system/
+cp /opt/sre-agent/deploy/sre-agent-auth.service /etc/systemd/system/
 
 # Trace cleanup (timer fires daily, with up to 1h random delay to spread load)
-cp /opt/sre-agent/systemd/sre-agent-cleanup.service /etc/systemd/system/
-cp /opt/sre-agent/systemd/sre-agent-cleanup.timer /etc/systemd/system/
+cp /opt/sre-agent/deploy/sre-agent-cleanup.service /etc/systemd/system/
+cp /opt/sre-agent/deploy/sre-agent-cleanup.timer /etc/systemd/system/
 
 systemctl daemon-reload
 systemctl enable --now sre-agent-langfuse sre-agent-auth sre-agent-cleanup.timer

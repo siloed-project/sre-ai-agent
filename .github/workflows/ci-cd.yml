@@ -58,8 +58,13 @@ jobs:
               sys.exit(1)
           PYEOF
             sudo cp /opt/sre-agent/deploy/sre-agent.service /etc/systemd/system/sre-agent.service
+            sudo cp /opt/sre-agent/deploy/sre-agent-langfuse.service /etc/systemd/system/sre-agent-langfuse.service
+            sudo cp /opt/sre-agent/deploy/sre-agent-auth.service /etc/systemd/system/sre-agent-auth.service
+            sudo cp /opt/sre-agent/deploy/sre-agent-cleanup.service /etc/systemd/system/sre-agent-cleanup.service
+            sudo cp /opt/sre-agent/deploy/sre-agent-cleanup.timer /etc/systemd/system/sre-agent-cleanup.timer
             sudo systemctl daemon-reload
-            sudo systemctl restart sre-agent
+            sudo systemctl restart sre-agent sre-agent-auth
             sleep 5
             systemctl is-active --quiet sre-agent || { systemctl status sre-agent --no-pager -l; exit 1; }
+            systemctl is-active --quiet sre-agent-auth || { systemctl status sre-agent-auth --no-pager -l; exit 1; }
           '
