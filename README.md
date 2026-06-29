@@ -60,41 +60,20 @@ MEMORY_DB_PATH=/var/lib/sre-agent/memory.db
 EOF
 chmod 600 /etc/sre-agent/env
 chown -R sre-agent:sre-agent /etc/sre-agent
-
-# Create the conversation memory directory
-mkdir -p /var/lib/sre-agent
-chown sre-agent:sre-agent /var/lib/sre-agent
-chmod 750 /var/lib/sre-agent
 ```
+
+> The conversation memory directory (`/var/lib/sre-agent/`) is created and owned automatically by systemd via `StateDirectory=sre-agent` — no manual `mkdir` needed.
 
 Copy your kubeconfig to `/etc/sre-agent/kubeconfig.yaml` (mode 600, owned by `sre-agent`).
 
-Install the systemd service:
-
-```ini
-# /etc/systemd/system/sre-agent.service
-[Unit]
-Description=SRE AI Telegram Bot
-After=network.target
-
-[Service]
-User=sre-agent
-EnvironmentFile=/etc/sre-agent/env
-WorkingDirectory=/opt/sre-agent
-ExecStart=/opt/sre-agent/.venv/bin/python -m app.telegram_bot
-Restart=always
-RestartSec=10
-StartLimitIntervalSec=60
-StartLimitBurst=3
-TimeoutStopSec=15
-
-[Install]
-WantedBy=multi-user.target
-```
+Install the systemd service (the unit file is version-controlled at `deploy/sre-agent.service`):
 
 ```bash
+cp /opt/sre-agent/deploy/sre-agent.service /etc/systemd/system/sre-agent.service
 systemctl daemon-reload && systemctl enable --now sre-agent
 ```
+
+The service file uses `StateDirectory=sre-agent` so systemd automatically creates and owns `/var/lib/sre-agent/` on every start — no manual directory setup required.
 
 ### Updating after code changes
 
