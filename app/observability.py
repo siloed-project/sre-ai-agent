@@ -86,6 +86,6 @@ def make_callbacks() -> tuple[list, "SREAgentCallbackHandler"]:
     handler = SREAgentCallbackHandler()
     callbacks: list = [handler]
     if os.environ.get("LANGFUSE_PUBLIC_KEY"):
-        from langfuse.callback import CallbackHandler as LFHandler  # type: ignore[import]
+        from langfuse.langchain import CallbackHandler as LFHandler  # type: ignore[import]
         callbacks.append(LFHandler())
     return callbacks, handler

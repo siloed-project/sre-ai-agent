@@ -108,7 +108,7 @@ class TestMakeCallbacks:
     def test_returns_two_callbacks_when_langfuse_configured(self, monkeypatch):
         monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
         mock_lf = MagicMock()
-        with patch.dict("sys.modules", {"langfuse.callback": mock_lf}):
+        with patch.dict("sys.modules", {"langfuse.langchain": mock_lf}):
             mock_lf.CallbackHandler = MagicMock(return_value=MagicMock())
             callbacks, handler = make_callbacks()
         assert len(callbacks) == 2
