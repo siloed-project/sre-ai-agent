@@ -159,37 +159,60 @@ When these vars are set, every agent run emits a trace to LangFuse. When they ar
 
 ### Expose the dashboard on a VPS (optional)
 
-A custom login page + nginx reverse proxy sits in front of LangFuse. Cloudflare DNS is optional — the setup works on plain HTTP for local/dev use.
+A custom login page and nginx reverse proxy sit in front of LangFuse. The LangFuse containers listen on loopback only; nginx is the public entry point. Cloudflare DNS is optional, but recommended for HTTPS.
 
-Three pieces run as separate systemd services (unit files are in `deploy/`):
+The deployment workflow runs after a push to `main`. It updates the application and systemd unit files, starts the LangFuse stack, restarts the auth and agent services, and reloads nginx. The first VPS setup and all secret values remain manual.
+
+#### Prerequisites
+
+The VPS must have:
+
+- Ubuntu/Debian with `sudo`, Git, Python 3.12+, and Docker Compose v2
+- a `deploy` user that can SSH in and run the required `sudo systemctl` and file-copy commands
+- ports 80 and 443 allowed by the VPS firewall/security group
+- the repository checked out at `/opt/sre-agent`
+
+Install nginx once, before the first deployment:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y nginx
+```
+
+The agent, auth server, LangFuse stack, cleanup timer, and nginx run as separate managed services (unit files are in `deploy/`):
 
 | Service | Unit file | Auto-deployed? | What it does |
 |---|---|---|---|
-| LangFuse stack | `sre-agent-langfuse.service` | Unit file only | Runs `docker compose` for LangFuse + Postgres |
+| LangFuse stack | `sre-agent-langfuse.service` | Yes — started/restarted on every deploy | Runs `docker compose` for LangFuse and its dependencies |
 | Auth server | `sre-agent-auth.service` | Yes — restarted on every deploy | Serves the login page on `127.0.0.1:8081` |
 | Trace cleanup | `sre-agent-cleanup.service` + `.timer` | Unit file only | Deletes old traces daily |
-| nginx | system `nginx.service` | No | Reverse proxy; already managed by systemd |
+| nginx | system `nginx.service` | Yes, after one-time installation | Reverse proxy; already managed by systemd |
 
 #### 1. Create secret files on the VPS
 
 ```bash
+sudo install -d -o sre-agent -g sre-agent /etc/sre-agent
+
 # LangFuse secrets (copy from .env.langfuse.example and fill in values)
 cp /opt/sre-agent/.env.langfuse.example /etc/sre-agent/langfuse.env
 chmod 600 /etc/sre-agent/langfuse.env
 chown sre-agent:sre-agent /etc/sre-agent/langfuse.env
 ```
 
-Fill in `/etc/sre-agent/langfuse.env`:
+Fill in `/etc/sre-agent/langfuse.env`. The complete list of supported variables is in `.env.langfuse.example`; at minimum, set the database, LangFuse auth, ClickHouse, Redis, MinIO, and bootstrap values. Use strong, unique values for every `change-me` placeholder.
 
 | Variable | What to put here |
 |---|---|
-| `POSTGRES_USER` | Any username, e.g. `langfuse` |
-| `POSTGRES_PASSWORD` | Strong random password — `openssl rand -hex 20` |
-| `POSTGRES_DB` | Any database name, e.g. `langfuse` |
-| `DATABASE_URL` | Must match above: `postgresql://langfuse:<password>@langfuse-db:5432/langfuse` |
-| `NEXTAUTH_URL` | Public URL of the dashboard, e.g. `https://sre-agent.example.com` |
-| `NEXTAUTH_SECRET` | 32-char random string — `openssl rand -hex 16` |
-| `SALT` | 16-char random string — `openssl rand -hex 8` |
+| `POSTGRES_USER` | Database username |
+| `POSTGRES_PASSWORD` | Strong random database password |
+| `POSTGRES_DB` | Database name |
+| `DATABASE_URL` | Must match the database values above |
+| `NEXTAUTH_URL` | Public dashboard URL, e.g. `https://sre-agent.siloed.dev` |
+| `NEXTAUTH_SECRET` | Strong random secret |
+| `SALT` | Strong random salt |
+| `ENCRYPTION_KEY` | 64-character hexadecimal encryption key |
+| ClickHouse/Redis/MinIO variables | Credentials and internal service URLs from `.env.langfuse.example` |
+| `LANGFUSE_INIT_*` variables | First-boot organization, project, and user values |
 
 ```bash
 # Dashboard auth secrets (copy from .env.dashboard.example and fill in values)
@@ -233,6 +256,8 @@ ln -sf /etc/nginx/sites-available/sre-agent.conf /etc/nginx/sites-enabled/
 nginx -t && systemctl enable --now nginx
 ```
 
+The checked-in nginx configuration listens on port 80 for `sre-agent.siloed.dev`, proxies `/login` to the auth server on `127.0.0.1:8081`, and proxies authenticated dashboard traffic to LangFuse on `127.0.0.1:3000`. If you use a different hostname, change `server_name` before enabling the site.
+
 To enable HTTPS, uncomment the TLS server block in `nginx/sre-agent.conf` and add your certificate path.
 
 #### Check status
@@ -253,7 +278,7 @@ If you want the dashboard reachable at a public URL (e.g. `https://sre-agent.sil
    - IPv4 address: your VPS public IP
    - Proxy status: **Proxied** (orange cloud)
 
-2. **Set SSL/TLS mode** to **Full** (Cloudflare dashboard → SSL/TLS → Overview). This tells Cloudflare to encrypt traffic to your VPS over HTTP without requiring a trusted cert on the server side — the nginx server block on port 80 is enough.
+2. **Set SSL/TLS mode** to **Full** (Cloudflare dashboard → SSL/TLS → Overview). This encrypts the browser-to-Cloudflare connection while allowing Cloudflare to connect to the port-80 nginx origin. Use **Full (strict)** only after installing a trusted certificate, such as a Cloudflare Origin Certificate, on nginx.
 
 3. **Update `NEXTAUTH_URL`** in `/etc/sre-agent/langfuse.env` to match the public URL:
    ```
@@ -268,6 +293,34 @@ If you want the dashboard reachable at a public URL (e.g. `https://sre-agent.sil
    Then reload: `nginx -t && systemctl reload nginx`
 
 That's it — Cloudflare handles TLS termination and the HTTP server block on the VPS serves the proxied traffic. The HTTPS TLS block in `nginx/sre-agent.conf` is only needed if you want end-to-end encryption between Cloudflare and your VPS (SSL/TLS mode **Full (strict)**), in which case you'd add a Cloudflare origin certificate at the path shown in the commented block.
+
+#### Configure agent tracing on the VPS
+
+Add the LangFuse project keys to `/etc/sre-agent/env`:
+
+```dotenv
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_HOST=https://sre-agent.siloed.dev
+```
+
+Then restart the agent:
+
+```bash
+sudo systemctl restart sre-agent
+```
+
+#### Verify the deployment
+
+```bash
+sudo systemctl status sre-agent sre-agent-auth sre-agent-langfuse nginx --no-pager
+sudo docker compose -f /opt/sre-agent/docker-compose.langfuse.yml ps
+sudo nginx -t
+curl -I http://127.0.0.1:3000
+curl -I http://127.0.0.1:8081/login
+```
+
+Open `https://sre-agent.siloed.dev`. The custom SRE Agent login page should appear first; after signing in, nginx forwards the request to the LangFuse dashboard.
 
 ### Trace retention
 

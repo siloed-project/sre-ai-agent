@@ -7,6 +7,7 @@ Requires=docker.service
 [Service]
 WorkingDirectory=/opt/sre-agent
 EnvironmentFile=/etc/sre-agent/langfuse.env
+Environment=LANGFUSE_ENV_FILE=/etc/sre-agent/langfuse.env
 ExecStart=docker compose -f docker-compose.langfuse.yml up
 ExecStop=docker compose -f docker-compose.langfuse.yml down
 Restart=on-failure

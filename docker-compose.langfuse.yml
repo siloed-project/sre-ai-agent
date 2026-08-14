@@ -11,7 +11,7 @@ services:
         condition: service_healthy
       clickhouse:
         condition: service_healthy
-    env_file: .env.langfuse
+    env_file: ${LANGFUSE_ENV_FILE:-.env.langfuse}
 
   langfuse-web:
     image: docker.io/langfuse/langfuse:3
@@ -27,11 +27,11 @@ services:
         condition: service_healthy
       clickhouse:
         condition: service_healthy
-    env_file: .env.langfuse
+    env_file: ${LANGFUSE_ENV_FILE:-.env.langfuse}
 
   langfuse-db:
     image: postgres:15-alpine
-    env_file: .env.langfuse
+    env_file: ${LANGFUSE_ENV_FILE:-.env.langfuse}
     volumes:
       - langfuse_db_data:/var/lib/postgresql/data
     healthcheck:
@@ -42,7 +42,7 @@ services:
 
   clickhouse:
     image: docker.io/clickhouse/clickhouse-server
-    env_file: .env.langfuse
+    env_file: ${LANGFUSE_ENV_FILE:-.env.langfuse}
     restart: always
     user: "101:101"
     environment:
@@ -59,7 +59,7 @@ services:
 
   minio:
     image: cgr.dev/chainguard/minio
-    env_file: .env.langfuse
+    env_file: ${LANGFUSE_ENV_FILE:-.env.langfuse}
     restart: always
     entrypoint: sh
     command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
@@ -77,7 +77,7 @@ services:
 
   redis:
     image: docker.io/redis:7
-    env_file: .env.langfuse
+    env_file: ${LANGFUSE_ENV_FILE:-.env.langfuse}
     restart: always
     command:
       - /bin/sh
