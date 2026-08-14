@@ -50,11 +50,16 @@ async def handle_message(
     timed_out = False
     try:
         config = {"configurable": {"thread_id": str(chat_id)}}
+        config["callbacks"] = callbacks
+        config["metadata"] = {
+            "thread_id": str(chat_id),
+            "langfuse_session_id": f"telegram:{chat_id}",
+        }
         result = await asyncio.wait_for(
             asyncio.to_thread(
                 lambda: agent.invoke(
                     {"messages": [HumanMessage(content=update.message.text)]},
-                    config={**config, "callbacks": callbacks},
+                    config=config,
                 )
             ),
             timeout=AGENT_TIMEOUT,

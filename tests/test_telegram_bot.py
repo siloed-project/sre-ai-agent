@@ -92,6 +92,8 @@ async def test_allowed_chat_id_receives_answer():
     assert "healthy" in reply_msg.edit_text.call_args[0][0]
     invoke_config = agent.invoke.call_args.kwargs["config"]
     assert invoke_config["configurable"]["thread_id"] == "12345"
+    assert invoke_config["metadata"]["thread_id"] == "12345"
+    assert invoke_config["metadata"]["langfuse_session_id"] == "telegram:12345"
 
 
 async def test_disallowed_chat_id_is_silently_dropped():
