@@ -337,6 +337,28 @@ To run it manually at any time:
 systemctl start sre-agent-cleanup.service
 ```
 
+### Prepare a VPS for CI/CD
+
+The deployment workflow connects as the unprivileged `deploy` user. On a new
+Ubuntu VPS, install Docker, Docker Compose, nginx, and the `deploy` user first,
+then run the repository bootstrap script as root:
+
+```bash
+sudo /opt/sre-agent/deploy/bootstrap-vps.sh
+```
+
+Before enabling CI deployment, provision these non-empty files on the VPS;
+they contain secrets and must not be committed:
+
+```text
+/etc/sre-agent/env
+/etc/sre-agent/langfuse.env
+/etc/sre-agent/dashboard.env
+```
+
+The CI preflight checks that Docker, Compose, nginx, and these files exist. The
+Langfuse systemd service pulls current container images before starting them.
+
 ## Example questions
 
 ```bash
