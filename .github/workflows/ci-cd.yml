@@ -40,6 +40,13 @@ jobs:
             cd /opt/sre-agent
             git fetch
             git reset --hard origin/main
+            command -v docker >/dev/null || { echo "Docker is not installed" >&2; exit 1; }
+            command -v nginx >/dev/null || { echo "Nginx is not installed" >&2; exit 1; }
+            docker compose version >/dev/null || { echo "Docker Compose is unavailable" >&2; exit 1; }
+            for required_file in /etc/sre-agent/env /etc/sre-agent/langfuse.env /etc/sre-agent/dashboard.env; do
+              size=$(sudo stat -c %s "$required_file" 2>/dev/null || true)
+              [ "${size:-0}" -gt 0 ] || { echo "Missing or empty $required_file" >&2; exit 1; }
+            done
             .venv/bin/pip install -r requirements.txt
             .venv/bin/python3 - << PYEOF
           import sys, traceback, sqlite3, os
