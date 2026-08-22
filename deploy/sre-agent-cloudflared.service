@@ -1,0 +1,14 @@
+[Unit]
+Description=Cloudflare Tunnel (cloudflared)
+Documentation=https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/sre-agent/cloudflared.env
+ExecStart=/usr/bin/cloudflared tunnel run --token ${TUNNEL_TOKEN}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
