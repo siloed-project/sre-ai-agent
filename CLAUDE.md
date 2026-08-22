@@ -109,7 +109,6 @@ docker run --rm \
 - `ALLOWED_CHAT_IDS` — comma-separated list of Telegram chat IDs allowed to query the bot
 - `MEMORY_DB_PATH` — path to the SQLite file for conversation memory (default: `/var/lib/sre-agent/memory.db`); directory is created automatically on first run
 - `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` — optional; enable LangFuse tracing
-- `DASHBOARD_USERNAME`, `DASHBOARD_PASSWORD`, `DASHBOARD_SECRET` — required for `scripts/auth_server.py`
 - `LANGFUSE_RETENTION_DAYS` — days to keep traces (default: 30); used by `scripts/cleanup_langfuse.py`
 
 Copy `.env.example` to `.env` and fill in values. `app/main.py` loads `.env` via `python-dotenv`.
@@ -132,7 +131,7 @@ This is a **read-only SRE Q&A agent** built on LangChain + LangGraph that transl
 
 **Telegram bot specifics:** `handle_message` enforces `ALLOWED_CHAT_IDS`, wraps the synchronous agent in `asyncio.to_thread` (with `check_same_thread=False` on the SQLite connection), applies a 120-second timeout, and truncates output to Telegram's 4096-character limit. Only the `Answer:` section is sent to Telegram; the full `Investigation:` trace stays server-side.
 
-**Observability:** `app/observability.py` provides `SREAgentCallbackHandler` (structured stdout logging) and `make_callbacks()`, which both entrypoints call. When `LANGFUSE_PUBLIC_KEY` is set, a `langfuse.callback.CallbackHandler` is appended — LangFuse handles cost tracking via its own model pricing catalog (configure under Settings → Models in the LangFuse UI). The auth server in `scripts/auth_server.py` guards the LangFuse dashboard; `scripts/cleanup_langfuse.py` deletes old traces. nginx config lives in `nginx/`.
+**Observability:** `app/observability.py` provides `SREAgentCallbackHandler` (structured stdout logging) and `make_callbacks()`, which both entrypoints call. When `LANGFUSE_PUBLIC_KEY` is set, a `langfuse.callback.CallbackHandler` is appended — LangFuse handles cost tracking via its own model pricing catalog (configure under Settings → Models in the LangFuse UI). `scripts/cleanup_langfuse.py` deletes old traces. nginx config lives in `nginx/` and binds to loopback only — the public entry point is a Cloudflare Tunnel (`sre-agent-cloudflared.service`, unit in `deploy/`, token in `/etc/sre-agent/cloudflared.env`), gated by Cloudflare Access SSO at the edge; the VPS host firewall (`ufw`) denies all inbound traffic except SSH, since the tunnel connects outbound only.
 
 ## Related repositories
 

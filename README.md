@@ -138,9 +138,9 @@ When these vars are set, every agent run emits a trace to LangFuse. When they ar
 
 ### Expose the dashboard on a VPS (optional)
 
-A custom login page and nginx reverse proxy sit in front of LangFuse. The LangFuse containers listen on loopback only; nginx is the public entry point. Cloudflare DNS is optional, but recommended for HTTPS.
+An nginx reverse proxy sits in front of LangFuse. The LangFuse containers listen on loopback only; nginx itself also listens on loopback and is reached only through a Cloudflare Tunnel, with Cloudflare Access providing SSO — see [step 4](#4-point-a-domain-via-cloudflare-optional). Because SSO is enforced at Cloudflare's edge before any request reaches the VPS, there is no separate application-level login page.
 
-The deployment workflow runs after a push to `main`. It updates the application and systemd unit files, starts the LangFuse stack, restarts the auth and agent services, and reloads nginx. The first VPS setup and all secret values remain manual.
+The deployment workflow runs after a push to `main`. It updates the application and systemd unit files, starts the LangFuse stack, restarts the agent and tunnel services, and reloads nginx. The first VPS setup and all secret values remain manual.
 
 #### Prerequisites
 
@@ -148,8 +148,8 @@ The VPS must have:
 
 - Ubuntu/Debian with `sudo`, Git, Python 3.12+, and Docker Compose v2
 - a `deploy` user that can SSH in and run the required `sudo systemctl` and file-copy commands
-- ports 80 and 443 allowed by the VPS firewall/security group
 - the repository checked out at `/opt/sre-agent`
+- a Cloudflare Tunnel (see [Point a domain via Cloudflare](#4-point-a-domain-via-cloudflare-optional) below) — traffic reaches nginx through `cloudflared`'s outbound connection, so no inbound port needs to be opened on the VPS firewall
 
 Install nginx once, before the first deployment:
 
@@ -158,14 +158,14 @@ sudo apt-get update
 sudo apt-get install -y nginx
 ```
 
-The agent, auth server, LangFuse stack, cleanup timer, and nginx run as separate managed services (unit files are in `deploy/`):
+The agent, LangFuse stack, cleanup timer, and nginx run as separate managed services (unit files are in `deploy/`):
 
 | Service | Unit file | Auto-deployed? | What it does |
 |---|---|---|---|
 | LangFuse stack | `sre-agent-langfuse.service` | Yes — started/restarted on every deploy | Runs `docker compose` for LangFuse and its dependencies |
-| Auth server | `sre-agent-auth.service` | Yes — restarted on every deploy | Serves the login page on `127.0.0.1:8081` |
 | Trace cleanup | `sre-agent-cleanup.service` + `.timer` | Unit file only | Deletes old traces daily |
 | nginx | system `nginx.service` | Yes, after one-time installation | Reverse proxy; already managed by systemd |
+| Cloudflare Tunnel | `sre-agent-cloudflared.service` | Yes — restarted on every deploy | Carries traffic from Cloudflare to nginx over an outbound connection; no inbound port needed |
 
 #### 1. Create secret files on the VPS
 
@@ -194,19 +194,17 @@ Fill in `/etc/sre-agent/langfuse.env`. The complete list of supported variables 
 | `LANGFUSE_INIT_*` variables | First-boot organization, project, and user values |
 
 ```bash
-# Dashboard auth secrets (copy from .env.dashboard.example and fill in values)
-cp /opt/sre-agent/.env.dashboard.example /etc/sre-agent/dashboard.env
-chmod 600 /etc/sre-agent/dashboard.env
-chown sre-agent:sre-agent /etc/sre-agent/dashboard.env
+# Cloudflare Tunnel token (copy from .env.cloudflared.example and fill in)
+cp /opt/sre-agent/.env.cloudflared.example /etc/sre-agent/cloudflared.env
+chmod 600 /etc/sre-agent/cloudflared.env
+chown sre-agent:sre-agent /etc/sre-agent/cloudflared.env
 ```
 
-Fill in `/etc/sre-agent/dashboard.env`:
+Fill in `/etc/sre-agent/cloudflared.env`:
 
 | Variable | What to put here |
 |---|---|
-| `DASHBOARD_USERNAME` | Login username, e.g. `admin` |
-| `DASHBOARD_PASSWORD` | A strong password of your choice |
-| `DASHBOARD_SECRET` | 32-char random string to sign session cookies — `openssl rand -hex 16` |
+| `TUNNEL_TOKEN` | The token shown when you create the tunnel in Cloudflare Zero Trust → Networks → Tunnels (see [step 4](#4-point-a-domain-via-cloudflare-optional)) |
 
 #### 2. Install and enable the systemd services
 
@@ -214,15 +212,15 @@ Fill in `/etc/sre-agent/dashboard.env`:
 # LangFuse docker-compose service
 cp /opt/sre-agent/deploy/sre-agent-langfuse.service /etc/systemd/system/
 
-# Auth server
-cp /opt/sre-agent/deploy/sre-agent-auth.service /etc/systemd/system/
-
 # Trace cleanup (timer fires daily, with up to 1h random delay to spread load)
 cp /opt/sre-agent/deploy/sre-agent-cleanup.service /etc/systemd/system/
 cp /opt/sre-agent/deploy/sre-agent-cleanup.timer /etc/systemd/system/
 
+# Cloudflare Tunnel
+cp /opt/sre-agent/deploy/sre-agent-cloudflared.service /etc/systemd/system/
+
 systemctl daemon-reload
-systemctl enable --now sre-agent-langfuse sre-agent-auth sre-agent-cleanup.timer
+systemctl enable --now sre-agent-langfuse sre-agent-cleanup.timer sre-agent-cloudflared
 ```
 
 #### 3. Configure nginx
@@ -235,43 +233,45 @@ ln -sf /etc/nginx/sites-available/sre-agent.conf /etc/nginx/sites-enabled/
 nginx -t && systemctl enable --now nginx
 ```
 
-The checked-in nginx configuration listens on port 80 for `sre-agent.siloed.dev`, proxies `/login` to the auth server on `127.0.0.1:8081`, and proxies authenticated dashboard traffic to LangFuse on `127.0.0.1:3000`. If you use a different hostname, change `server_name` before enabling the site.
+The checked-in nginx configuration listens on `127.0.0.1:80` for `sre-agent.siloed.dev` and proxies dashboard traffic to LangFuse on `127.0.0.1:3000`. If you use a different hostname, change `server_name` before enabling the site.
 
-To enable HTTPS, uncomment the TLS server block in `nginx/sre-agent.conf` and add your certificate path.
+To enable HTTPS between Cloudflare and the VPS (SSL/TLS mode Full (strict)), uncomment the TLS server block in `nginx/sre-agent.conf` and add a Cloudflare Origin Certificate.
 
 #### Check status
 
 ```bash
-systemctl status sre-agent-langfuse sre-agent-auth sre-agent-cleanup.timer nginx
+systemctl status sre-agent-langfuse sre-agent-cleanup.timer sre-agent-cloudflared nginx
 journalctl -u sre-agent-langfuse -f
-journalctl -u sre-agent-auth -f
+journalctl -u sre-agent-cloudflared -f
 ```
 
 #### 4. Point a domain via Cloudflare (optional)
 
-If you want the dashboard reachable at a public URL (e.g. `https://sre-agent.siloed.dev`) you can proxy it through Cloudflare — this gives you free TLS without managing certificates yourself.
+The dashboard is reached at a public URL (e.g. `https://sre-agent.siloed.dev`) via a **Cloudflare Tunnel**, with **Cloudflare Access** providing SSO in front of it. Unlike a plain DNS A-record setup, the VPS never accepts inbound connections on 80/443 — `cloudflared` makes an outbound-only connection to Cloudflare's edge, and the host firewall (`ufw`, hardened by `deploy/bootstrap-vps.sh`) denies all inbound traffic except SSH.
 
-1. **Add a DNS record** in the Cloudflare dashboard for your domain:
-   - Type: `A`
-   - Name: `sre-agent` (or whatever subdomain you want)
-   - IPv4 address: your VPS public IP
-   - Proxy status: **Proxied** (orange cloud)
+1. **Create the tunnel** in Cloudflare Zero Trust → Networks → Tunnels → *Create a tunnel* → Cloudflared. Copy the token it gives you into `/etc/sre-agent/cloudflared.env` as `TUNNEL_TOKEN` (see [step 1](#1-create-secret-files-on-the-vps)).
 
-2. **Set SSL/TLS mode** to **Full** (Cloudflare dashboard → SSL/TLS → Overview). This encrypts the browser-to-Cloudflare connection while allowing Cloudflare to connect to the port-80 nginx origin. Use **Full (strict)** only after installing a trusted certificate, such as a Cloudflare Origin Certificate, on nginx.
+2. **Add a public hostname** on the tunnel:
+   - Subdomain/domain: e.g. `sre-agent.siloed.dev`
+   - Service: `HTTP://localhost:80` (nginx, listening on loopback only)
 
-3. **Update `NEXTAUTH_URL`** in `/etc/sre-agent/langfuse.env` to match the public URL:
+   Cloudflare creates the DNS record automatically — no manual A record needed.
+
+3. **Add a Cloudflare Access application** (Zero Trust → Access → Applications → *Add an application* → Self-hosted) for the same hostname, with a policy that only allows your email/domain through your chosen identity provider. Unauthenticated requests are redirected to Cloudflare's login page before they ever reach the VPS.
+
+4. **Update `NEXTAUTH_URL`** in `/etc/sre-agent/langfuse.env` to match the public URL:
    ```
    NEXTAUTH_URL=https://sre-agent.siloed.dev
    ```
    Then restart LangFuse: `systemctl restart sre-agent-langfuse`
 
-4. **Update the nginx server name** in `/etc/nginx/sites-available/sre-agent.conf`:
+5. **Update the nginx server name** in `/etc/nginx/sites-available/sre-agent.conf`:
    ```nginx
    server_name sre-agent.siloed.dev;
    ```
    Then reload: `nginx -t && systemctl reload nginx`
 
-That's it — Cloudflare handles TLS termination and the HTTP server block on the VPS serves the proxied traffic. The HTTPS TLS block in `nginx/sre-agent.conf` is only needed if you want end-to-end encryption between Cloudflare and your VPS (SSL/TLS mode **Full (strict)**), in which case you'd add a Cloudflare origin certificate at the path shown in the commented block.
+Cloudflare handles TLS termination at its edge; nginx only needs to serve plain HTTP on loopback for `cloudflared` to reach.
 
 #### Configure agent tracing on the VPS
 
@@ -292,14 +292,13 @@ sudo systemctl restart sre-agent
 #### Verify the deployment
 
 ```bash
-sudo systemctl status sre-agent sre-agent-auth sre-agent-langfuse nginx --no-pager
+sudo systemctl status sre-agent sre-agent-langfuse sre-agent-cloudflared nginx --no-pager
 sudo docker compose -f /opt/sre-agent/docker-compose.langfuse.yml ps
 sudo nginx -t
 curl -I http://127.0.0.1:3000
-curl -I http://127.0.0.1:8081/login
 ```
 
-Open `https://sre-agent.siloed.dev`. The custom SRE Agent login page should appear first; after signing in, nginx forwards the request to the LangFuse dashboard.
+Open `https://sre-agent.siloed.dev`. Cloudflare Access's login page should appear first; after signing in, the tunnel forwards the request to nginx, which proxies it to the LangFuse dashboard.
 
 ### Trace retention
 
@@ -326,17 +325,23 @@ then run the repository bootstrap script as root:
 sudo /opt/sre-agent/deploy/bootstrap-vps.sh
 ```
 
+The bootstrap script also installs `cloudflared` (if missing) and hardens the
+host firewall with `ufw` — allowing SSH only and denying all other inbound
+traffic, since the Cloudflare Tunnel reaches nginx over an outbound
+connection and never needs an open inbound port.
+
 Before enabling CI deployment, provision these non-empty files on the VPS;
 they contain secrets and must not be committed:
 
 ```text
 /etc/sre-agent/env
 /etc/sre-agent/langfuse.env
-/etc/sre-agent/dashboard.env
+/etc/sre-agent/cloudflared.env
 ```
 
-The CI preflight checks that Docker, Compose, nginx, and these files exist. The
-Langfuse systemd service pulls current container images before starting them.
+The CI preflight checks that Docker, Compose, nginx, `cloudflared`, and these
+files exist. The Langfuse systemd service pulls current container images
+before starting them.
 
 ## Example questions
 

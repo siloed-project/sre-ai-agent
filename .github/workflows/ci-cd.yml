@@ -42,8 +42,9 @@ jobs:
             git reset --hard origin/main
             command -v docker >/dev/null || { echo "Docker is not installed" >&2; exit 1; }
             command -v nginx >/dev/null || { echo "Nginx is not installed" >&2; exit 1; }
+            command -v cloudflared >/dev/null || { echo "cloudflared is not installed" >&2; exit 1; }
             docker compose version >/dev/null || { echo "Docker Compose is unavailable" >&2; exit 1; }
-            for required_file in /etc/sre-agent/env /etc/sre-agent/langfuse.env /etc/sre-agent/dashboard.env; do
+            for required_file in /etc/sre-agent/env /etc/sre-agent/langfuse.env /etc/sre-agent/cloudflared.env; do
               size=$(sudo stat -c %s "$required_file" 2>/dev/null || true)
               [ "${size:-0}" -gt 0 ] || { echo "Missing or empty $required_file" >&2; exit 1; }
             done
@@ -66,20 +67,20 @@ jobs:
           PYEOF
             sudo cp /opt/sre-agent/deploy/sre-agent.service /etc/systemd/system/sre-agent.service
             sudo cp /opt/sre-agent/deploy/sre-agent-langfuse.service /etc/systemd/system/sre-agent-langfuse.service
-            sudo cp /opt/sre-agent/deploy/sre-agent-auth.service /etc/systemd/system/sre-agent-auth.service
             sudo cp /opt/sre-agent/deploy/sre-agent-cleanup.service /etc/systemd/system/sre-agent-cleanup.service
             sudo cp /opt/sre-agent/deploy/sre-agent-cleanup.timer /etc/systemd/system/sre-agent-cleanup.timer
+            sudo cp /opt/sre-agent/deploy/sre-agent-cloudflared.service /etc/systemd/system/sre-agent-cloudflared.service
             sudo cp /opt/sre-agent/nginx/langfuse-proxy.conf /etc/nginx/snippets/langfuse-proxy.conf
             sudo cp /opt/sre-agent/nginx/sre-agent.conf /etc/nginx/sites-available/sre-agent.conf
             sudo ln -sfn /etc/nginx/sites-available/sre-agent.conf /etc/nginx/sites-enabled/sre-agent.conf
             sudo nginx -t
             sudo systemctl daemon-reload
-            sudo systemctl enable --now nginx sre-agent-langfuse sre-agent-auth sre-agent-cleanup.timer
-            sudo systemctl restart sre-agent sre-agent-auth sre-agent-langfuse
+            sudo systemctl enable --now nginx sre-agent-langfuse sre-agent-cleanup.timer sre-agent-cloudflared
+            sudo systemctl restart sre-agent sre-agent-langfuse sre-agent-cloudflared
             sudo systemctl reload nginx
             sleep 5
             systemctl is-active --quiet sre-agent || { systemctl status sre-agent --no-pager -l; exit 1; }
-            systemctl is-active --quiet sre-agent-auth || { systemctl status sre-agent-auth --no-pager -l; exit 1; }
             systemctl is-active --quiet sre-agent-langfuse || { systemctl status sre-agent-langfuse --no-pager -l; exit 1; }
+            systemctl is-active --quiet sre-agent-cloudflared || { systemctl status sre-agent-cloudflared --no-pager -l; exit 1; }
             systemctl is-active --quiet nginx || { systemctl status nginx --no-pager -l; exit 1; }
           '
