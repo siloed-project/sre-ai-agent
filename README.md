@@ -33,6 +33,7 @@ The agent also runs as an interactive Telegram bot, deployed as a systemd servic
 - A Telegram bot token (from [@BotFather](https://t.me/BotFather))
 - A kubeconfig scoped to a read-only ServiceAccount
 - `ANTHROPIC_API_KEY`
+- A running private Cloudflare Tunnel to the kube-apiserver — see [Private kube-apiserver access](#private-kube-apiserver-access-cloudflare-tunnel) below; the cluster side is provisioned from the `siloed_dev` repo (`infra/terraform/cloudflare_tunnel_kube.tf`)
 
 ### Setup
 
@@ -64,7 +65,9 @@ chown -R sre-agent:sre-agent /etc/sre-agent
 
 > The conversation memory directory (`/var/lib/sre-agent/`) is created and owned automatically by systemd via `StateDirectory=sre-agent` — no manual `mkdir` needed.
 
-Copy your kubeconfig to `/etc/sre-agent/kubeconfig.yaml` (mode 600, owned by `sre-agent`).
+Copy your kubeconfig to `/etc/sre-agent/kubeconfig.yaml` (mode 600, owned by `sre-agent`). Its
+`server:` field must be `https://127.0.0.1:6443` — the apiserver has no public inbound rule, so
+this only resolves once `sre-agent-cloudflared-kube.service` (below) is running.
 
 Install the systemd service (the unit file is version-controlled at `deploy/sre-agent.service`):
 
@@ -96,6 +99,46 @@ The VPS IP only changes if the server is deleted and recreated — Hetzner prese
 
 1. Update the `VPS_IP` secret in the GitHub repo (Settings → Secrets → Actions).
 2. Re-run `setup-vps` and `setup-deploy-user` on the new server — the existing deploy key in GitHub secrets stays valid and does not need to be regenerated.
+
+### Private kube-apiserver access (Cloudflare Tunnel)
+
+The kube-apiserver has no public inbound firewall rule — the agent reaches it through a private
+Cloudflare Tunnel instead, via a local client proxy (`cloudflared access tcp`) that this VPS talks
+to over loopback. This is a separate, independent tunnel from the dashboard's (below): that one is
+a `cloudflared tunnel run` **server** carrying public traffic in; this one is a `cloudflared access
+tcp` **client** dialing a private route out. Cluster-side setup (the tunnel, its TCP ingress rule,
+and the Access service token) lives in the `siloed_dev` repo — see its `infra/CLAUDE.md` "Private
+kube-apiserver access" section.
+
+```bash
+# Service token credentials (from siloed_dev: terraform output cloudflared_kube_access_service_token_id / _secret)
+cp /opt/sre-agent/.env.cloudflared-kube.example /etc/sre-agent/cloudflared-kube.env
+chmod 600 /etc/sre-agent/cloudflared-kube.env
+chown sre-agent:sre-agent /etc/sre-agent/cloudflared-kube.env
+```
+
+Fill in `/etc/sre-agent/cloudflared-kube.env`:
+
+| Variable | What to put here |
+|---|---|
+| `TUNNEL_HOSTNAME` | The private hostname from the tunnel's TCP ingress rule, e.g. `kube-api-internal.siloed.dev` |
+| `TUNNEL_SERVICE_TOKEN_ID` | `terraform output -raw cloudflared_kube_access_service_token_id` in `siloed_dev`'s `infra/terraform` |
+| `TUNNEL_SERVICE_TOKEN_SECRET` | `terraform output -raw cloudflared_kube_access_service_token_secret` in `siloed_dev`'s `infra/terraform` |
+
+```bash
+cp /opt/sre-agent/deploy/sre-agent-cloudflared-kube.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now sre-agent-cloudflared-kube
+```
+
+Check it's connected before starting/restarting `sre-agent`:
+
+```bash
+systemctl status sre-agent-cloudflared-kube
+journalctl -u sre-agent-cloudflared-kube -f
+```
+
+This service is included in the CI/CD deploy pipeline (see [Prepare a VPS for CI/CD](#prepare-a-vps-for-cicd)) once bootstrapped once by hand as above.
 
 ## Observability (LangFuse)
 
@@ -337,6 +380,7 @@ they contain secrets and must not be committed:
 /etc/sre-agent/env
 /etc/sre-agent/langfuse.env
 /etc/sre-agent/cloudflared.env
+/etc/sre-agent/cloudflared-kube.env
 ```
 
 The CI preflight checks that Docker, Compose, nginx, `cloudflared`, and these

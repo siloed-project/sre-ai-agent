@@ -1,0 +1,19 @@
+[Unit]
+Description=Cloudflare Access TCP proxy for the kube-apiserver
+Documentation=https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/private-net/cloudflared/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=sre-agent
+EnvironmentFile=/etc/sre-agent/cloudflared-kube.env
+ExecStart=/usr/bin/cloudflared access tcp \
+  --hostname ${TUNNEL_HOSTNAME} \
+  --url 127.0.0.1:6443 \
+  --service-token-id ${TUNNEL_SERVICE_TOKEN_ID} \
+  --service-token-secret ${TUNNEL_SERVICE_TOKEN_SECRET}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

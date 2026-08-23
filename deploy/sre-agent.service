@@ -1,6 +1,7 @@
 [Unit]
 Description=SRE AI Telegram Bot
-After=network.target
+After=network.target sre-agent-cloudflared-kube.service
+Wants=sre-agent-cloudflared-kube.service
 
 [Service]
 User=sre-agent
