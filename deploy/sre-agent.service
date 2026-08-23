@@ -1,5 +1,8 @@
 [Unit]
 Description=SRE AI Telegram Bot
+# sre-agent-cloudflared-kube.service is optional (see README "Private
+# kube-apiserver access"). Wants= on a unit that was never installed is a
+# no-op -- systemd skips it silently, this still starts fine without it.
 After=network.target sre-agent-cloudflared-kube.service
 Wants=sre-agent-cloudflared-kube.service
 

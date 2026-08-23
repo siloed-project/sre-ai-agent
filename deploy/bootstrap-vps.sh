@@ -37,14 +37,19 @@ deploy ALL=(ALL) NOPASSWD: /bin/cp /opt/sre-agent/deploy/sre-agent-langfuse.serv
 deploy ALL=(ALL) NOPASSWD: /bin/cp /opt/sre-agent/deploy/sre-agent-cleanup.service /etc/systemd/system/sre-agent-cleanup.service
 deploy ALL=(ALL) NOPASSWD: /bin/cp /opt/sre-agent/deploy/sre-agent-cleanup.timer /etc/systemd/system/sre-agent-cleanup.timer
 deploy ALL=(ALL) NOPASSWD: /bin/cp /opt/sre-agent/deploy/sre-agent-cloudflared.service /etc/systemd/system/sre-agent-cloudflared.service
+# sre-agent-cloudflared-kube.service is optional -- these grants sit unused
+# if you don't provision /etc/sre-agent/cloudflared-kube.env (see README
+# "Private kube-apiserver access"). ci-cd.yml only invokes them when it does.
 deploy ALL=(ALL) NOPASSWD: /bin/cp /opt/sre-agent/deploy/sre-agent-cloudflared-kube.service /etc/systemd/system/sre-agent-cloudflared-kube.service
 deploy ALL=(ALL) NOPASSWD: /bin/cp /opt/sre-agent/nginx/langfuse-proxy.conf /etc/nginx/snippets/langfuse-proxy.conf
 deploy ALL=(ALL) NOPASSWD: /bin/cp /opt/sre-agent/nginx/sre-agent.conf /etc/nginx/sites-available/sre-agent.conf
 deploy ALL=(ALL) NOPASSWD: /bin/ln -sfn /etc/nginx/sites-available/sre-agent.conf /etc/nginx/sites-enabled/sre-agent.conf
 deploy ALL=(ALL) NOPASSWD: /usr/sbin/nginx -t
 deploy ALL=(ALL) NOPASSWD: /bin/systemctl daemon-reload
-deploy ALL=(ALL) NOPASSWD: /bin/systemctl enable --now nginx sre-agent-langfuse sre-agent-cleanup.timer sre-agent-cloudflared sre-agent-cloudflared-kube
-deploy ALL=(ALL) NOPASSWD: /bin/systemctl restart sre-agent sre-agent-langfuse sre-agent-cloudflared sre-agent-cloudflared-kube
+deploy ALL=(ALL) NOPASSWD: /bin/systemctl enable --now nginx sre-agent-langfuse sre-agent-cleanup.timer sre-agent-cloudflared
+deploy ALL=(ALL) NOPASSWD: /bin/systemctl restart sre-agent sre-agent-langfuse sre-agent-cloudflared
+deploy ALL=(ALL) NOPASSWD: /bin/systemctl enable --now sre-agent-cloudflared-kube
+deploy ALL=(ALL) NOPASSWD: /bin/systemctl restart sre-agent-cloudflared-kube
 deploy ALL=(ALL) NOPASSWD: /bin/systemctl reload nginx
 deploy ALL=(ALL) NOPASSWD: /usr/bin/stat -c %s /etc/sre-agent/env
 deploy ALL=(ALL) NOPASSWD: /usr/bin/stat -c %s /etc/sre-agent/langfuse.env
