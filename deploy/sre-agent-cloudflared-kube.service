@@ -1,4 +1,10 @@
 [Unit]
+# Private tunnel, CLIENT mode: dials out to a Cloudflare Access route to
+# reach the kube-apiserver, proxying it to 127.0.0.1:6443. Optional -- only
+# needed if the apiserver isn't otherwise reachable from this VPS. Not
+# related to sre-agent-cloudflared.service, which is a public SERVER
+# carrying inbound dashboard traffic -- see README "Private kube-apiserver
+# access (Cloudflare Tunnel, optional)".
 Description=Cloudflare Access TCP proxy for the kube-apiserver
 Documentation=https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/private-net/cloudflared/
 After=network-online.target

@@ -1,4 +1,8 @@
 [Unit]
+# Public tunnel, SERVER mode: carries inbound traffic from Cloudflare's edge
+# to the LangFuse dashboard (nginx on loopback). Not related to
+# sre-agent-cloudflared-kube.service, which is a private CLIENT proxy for
+# the kube-apiserver -- see README "Private kube-apiserver access".
 Description=Cloudflare Tunnel (cloudflared)
 Documentation=https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/
 After=network-online.target

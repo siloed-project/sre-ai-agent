@@ -31,7 +31,7 @@ The agent also runs as an interactive Telegram bot, deployed as a systemd servic
 
 - A Linux VPS with SSH root access
 - A Telegram bot token (from [@BotFather](https://t.me/BotFather))
-- A kubeconfig scoped to a read-only ServiceAccount, with a `server:` this VPS can actually reach — directly (a public/VPN-reachable apiserver — the default, nothing else to configure), or via a private tunnel if it isn't (see [Private kube-apiserver access](#private-kube-apiserver-access-cloudflare-tunnel-optional) below, entirely optional)
+- A kubeconfig scoped to a read-only ServiceAccount, with a `server:` this VPS can reach directly (the default — nothing else to configure). If it can't reach it directly, see [Private kube-apiserver access](#private-kube-apiserver-access-cloudflare-tunnel-optional) below (optional)
 - `ANTHROPIC_API_KEY`
 
 ### Setup
