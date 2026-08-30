@@ -189,7 +189,7 @@ When these vars are set, every agent run emits a trace to LangFuse. When they ar
 
 ### Expose the dashboard on a VPS (optional)
 
-An nginx reverse proxy sits in front of LangFuse. The LangFuse containers listen on loopback only; nginx itself also listens on loopback and is reached only through a Cloudflare Tunnel, with Cloudflare Access providing SSO — see [step 4](#4-point-a-domain-via-cloudflare-optional). Because SSO is enforced at Cloudflare's edge before any request reaches the VPS, there is no separate application-level login page.
+An nginx reverse proxy sits in front of LangFuse. The LangFuse containers listen on loopback only; nginx itself also listens on loopback and is reached only through a Cloudflare Tunnel, with Cloudflare Access providing perimeter SSO — see [step 4](#4-point-a-domain-via-cloudflare-optional). LangFuse is configured with the same upstream OIDC provider, so its login is normally seamless after Cloudflare Access authentication.
 
 The deployment workflow runs after a push to `main`. It updates the application and systemd unit files, starts the LangFuse stack, restarts the agent and tunnel services, and reloads nginx. The first VPS setup and all secret values remain manual.
 
@@ -241,6 +241,11 @@ Fill in `/etc/sre-agent/langfuse.env`. The complete list of supported variables 
 | `NEXTAUTH_SECRET` | Strong random secret |
 | `SALT` | Strong random salt |
 | `ENCRYPTION_KEY` | 64-character hexadecimal encryption key |
+| `AUTH_CUSTOM_CLIENT_ID` / `AUTH_CUSTOM_CLIENT_SECRET` | OIDC client credentials for the same provider configured in Cloudflare Access |
+| `AUTH_CUSTOM_ISSUER` | Exact issuer URL for that OIDC provider |
+| `AUTH_CUSTOM_NAME` | Display name for the LangFuse SSO button |
+| `AUTH_CUSTOM_ALLOW_ACCOUNT_LINKING` | `true`, so the initialized user can be linked by matching verified email |
+| `AUTH_DISABLE_USERNAME_PASSWORD` / `AUTH_DISABLE_SIGNUP` | Set both to `true` for SSO-only access |
 | ClickHouse/Redis/MinIO variables | Credentials and internal service URLs from `.env.langfuse.example` |
 | `LANGFUSE_INIT_*` variables | First-boot organization, project, and user values |
 
@@ -308,15 +313,21 @@ The dashboard is reached at a public URL (e.g. `https://sre-agent.siloed.dev`) v
 
    Cloudflare creates the DNS record automatically — no manual A record needed.
 
-3. **Add a Cloudflare Access application** (Zero Trust → Access → Applications → *Add an application* → Self-hosted) for the same hostname, with a policy that only allows your email/domain through your chosen identity provider. Unauthenticated requests are redirected to Cloudflare's login page before they ever reach the VPS.
+3. **Add a Cloudflare Access application** (Zero Trust → Access → Applications → *Add an application* → Self-hosted) for the same hostname, with a policy that only allows your email/domain through your chosen identity provider. Unauthenticated requests are redirected to Cloudflare's login page before they ever reach the VPS. Use that same OIDC provider's issuer, client ID, and client secret for LangFuse's `AUTH_CUSTOM_*` variables.
 
-4. **Update `NEXTAUTH_URL`** in `/etc/sre-agent/langfuse.env` to match the public URL:
+4. **Register LangFuse's callback URL** with the OIDC provider:
+   ```
+   https://sre-agent.siloed.dev/api/auth/callback/custom
+   ```
+   Then set `AUTH_CUSTOM_CLIENT_ID`, `AUTH_CUSTOM_CLIENT_SECRET`, `AUTH_CUSTOM_ISSUER`, and `AUTH_CUSTOM_NAME` in `/etc/sre-agent/langfuse.env`. Keep `AUTH_DISABLE_USERNAME_PASSWORD=true`, `AUTH_DISABLE_SIGNUP=true`, and `AUTH_CUSTOM_ALLOW_ACCOUNT_LINKING=true` enabled for SSO-only access.
+
+5. **Update `NEXTAUTH_URL`** in `/etc/sre-agent/langfuse.env` to match the public URL:
    ```
    NEXTAUTH_URL=https://sre-agent.siloed.dev
    ```
    Then restart LangFuse: `systemctl restart sre-agent-langfuse`
 
-5. **Update the nginx server name** in `/etc/nginx/sites-available/sre-agent.conf`:
+6. **Update the nginx server name** in `/etc/nginx/sites-available/sre-agent.conf`:
    ```nginx
    server_name sre-agent.siloed.dev;
    ```
