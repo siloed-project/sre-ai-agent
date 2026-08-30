@@ -1,10 +1,15 @@
+import os
+
 from kubernetes import client, config
 from langchain_core.tools import tool
 
 from app.schemas import ToolResult
 
 try:
-    config.load_kube_config()
+    # load_kube_config() with no args ignores $KUBECONFIG and only checks
+    # ~/.kube/config, which the sre-agent system user doesn't have. Pass it
+    # explicitly so /etc/sre-agent/env's KUBECONFIG setting actually applies.
+    config.load_kube_config(config_file=os.environ.get("KUBECONFIG"))
 except Exception:
     pass  # Will fail at runtime if kubeconfig is unavailable
 

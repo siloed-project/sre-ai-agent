@@ -48,6 +48,17 @@ jobs:
               size=$(sudo stat -c %s "$required_file" 2>/dev/null || true)
               [ "${size:-0}" -gt 0 ] || { echo "Missing or empty $required_file" >&2; exit 1; }
             done
+            # Private kube-apiserver tunnel is optional -- only present if this VPS
+            # was set up to reach the cluster through a Cloudflare Tunnel instead of
+            # a directly-reachable kubeconfig server (see README "Private
+            # kube-apiserver access"). Skip it entirely when absent.
+            kube_tunnel_size=$(sudo stat -c %s /etc/sre-agent/cloudflared-kube.env 2>/dev/null || true)
+            if [ "${kube_tunnel_size:-0}" -gt 0 ]; then
+              echo "Private kube-apiserver tunnel configured -- will deploy sre-agent-cloudflared-kube"
+              has_kube_tunnel=1
+            else
+              has_kube_tunnel=0
+            fi
             .venv/bin/pip install -r requirements.txt
             .venv/bin/python3 - << PYEOF
           import sys, traceback, sqlite3, os
@@ -74,13 +85,23 @@ jobs:
             sudo cp /opt/sre-agent/nginx/sre-agent.conf /etc/nginx/sites-available/sre-agent.conf
             sudo ln -sfn /etc/nginx/sites-available/sre-agent.conf /etc/nginx/sites-enabled/sre-agent.conf
             sudo nginx -t
+            if [ "$has_kube_tunnel" = "1" ]; then
+              sudo cp /opt/sre-agent/deploy/sre-agent-cloudflared-kube.service /etc/systemd/system/sre-agent-cloudflared-kube.service
+            fi
             sudo systemctl daemon-reload
             sudo systemctl enable --now nginx sre-agent-langfuse sre-agent-cleanup.timer sre-agent-cloudflared
             sudo systemctl restart sre-agent sre-agent-langfuse sre-agent-cloudflared
+            if [ "$has_kube_tunnel" = "1" ]; then
+              sudo systemctl enable --now sre-agent-cloudflared-kube
+              sudo systemctl restart sre-agent-cloudflared-kube
+            fi
             sudo systemctl reload nginx
             sleep 5
             systemctl is-active --quiet sre-agent || { systemctl status sre-agent --no-pager -l; exit 1; }
             systemctl is-active --quiet sre-agent-langfuse || { systemctl status sre-agent-langfuse --no-pager -l; exit 1; }
             systemctl is-active --quiet sre-agent-cloudflared || { systemctl status sre-agent-cloudflared --no-pager -l; exit 1; }
+            if [ "$has_kube_tunnel" = "1" ]; then
+              systemctl is-active --quiet sre-agent-cloudflared-kube || { systemctl status sre-agent-cloudflared-kube --no-pager -l; exit 1; }
+            fi
             systemctl is-active --quiet nginx || { systemctl status nginx --no-pager -l; exit 1; }
           '
