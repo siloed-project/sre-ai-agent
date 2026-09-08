@@ -13,6 +13,11 @@ Wants=network-online.target
 [Service]
 User=sre-agent
 EnvironmentFile=/etc/sre-agent/cloudflared-kube.env
+# The service user is intentionally created without a home directory. Give
+# cloudflared a persistent, private home for its JWKS cache and app-token file.
+StateDirectory=sre-agent-cloudflared-kube
+StateDirectoryMode=0700
+Environment=HOME=/var/lib/sre-agent-cloudflared-kube
 ExecStart=/usr/bin/cloudflared access tcp \
   --hostname ${TUNNEL_HOSTNAME} \
   --url 127.0.0.1:6443 \
