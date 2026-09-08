@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from langchain_core.messages import AIMessage
 
+import app.telegram_bot as telegram_bot
 from app.telegram_bot import extract_answer, handle_message, parse_allowed_chat_ids, TELEGRAM_MAX_LENGTH
 
 
@@ -117,8 +118,31 @@ async def test_timeout_replies_with_timeout_message():
     agent = MagicMock()
     with patch("app.telegram_bot.asyncio.wait_for", side_effect=asyncio.TimeoutError):
         await handle_message(update, MagicMock(), agent, frozenset({12345}))
+    active_task = telegram_bot._active_invocations.pop("12345", None)
+    if active_task is not None and not active_task.done():
+        active_task.cancel()
     reply_msg.edit_text.assert_called_once()
     assert "timed out" in reply_msg.edit_text.call_args[0][0].lower()
+
+
+async def test_active_invocation_blocks_same_chat():
+    update, reply_msg = _make_update(12345, "Are any pods unhealthy?")
+    agent = _make_agent("This should not run.")
+    active_task = asyncio.create_task(asyncio.sleep(60))
+    telegram_bot._active_invocations["12345"] = active_task
+
+    try:
+        await handle_message(update, MagicMock(), agent, frozenset({12345}))
+    finally:
+        active_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await active_task
+        telegram_bot._active_invocations.pop("12345", None)
+
+    update.message.reply_text.assert_called_once()
+    assert "still finishing" in update.message.reply_text.call_args[0][0]
+    agent.invoke.assert_not_called()
+    reply_msg.edit_text.assert_not_called()
 
 
 async def test_list_content_is_handled_gracefully():

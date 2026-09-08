@@ -16,6 +16,12 @@ logger = logging.getLogger(__name__)
 TELEGRAM_MAX_LENGTH = 4096
 AGENT_TIMEOUT = 120  # seconds
 
+# asyncio.wait_for() cancels the awaiter, not the worker thread created by
+# asyncio.to_thread(). Keep timed-out invocations tracked so a later message
+# cannot resume the same LangGraph thread while its previous invocation is
+# still writing checkpoint messages.
+_active_invocations: dict[str, asyncio.Task] = {}
+
 
 def parse_allowed_chat_ids(value: str) -> frozenset[int]:
     """Parse ALLOWED_CHAT_IDS env var. Raises ValueError on empty or non-numeric input."""
@@ -44,24 +50,37 @@ async def handle_message(
         logger.warning("Rejected message from chat_id=%s", chat_id)
         return
 
+    thread_id = str(chat_id)
+    active_invocation = _active_invocations.get(thread_id)
+    if active_invocation is not None and not active_invocation.done():
+        await update.message.reply_text(
+            "⏳ The previous investigation is still finishing. Please try again shortly."
+        )
+        return
+    _active_invocations.pop(thread_id, None)
+
     reply = await update.message.reply_text("🔍 Investigating...")
 
     callbacks, handler = make_callbacks()
     timed_out = False
     try:
-        config = {"configurable": {"thread_id": str(chat_id)}}
+        config = {"configurable": {"thread_id": thread_id}}
         config["callbacks"] = callbacks
         config["metadata"] = {
             "thread_id": str(chat_id),
             "langfuse_session_id": f"telegram:{chat_id}",
         }
-        result = await asyncio.wait_for(
+        invoke_task = asyncio.create_task(
             asyncio.to_thread(
                 lambda: agent.invoke(
                     {"messages": [HumanMessage(content=update.message.text)]},
                     config=config,
                 )
-            ),
+            )
+        )
+        _active_invocations[thread_id] = invoke_task
+        result = await asyncio.wait_for(
+            asyncio.shield(invoke_task),
             timeout=AGENT_TIMEOUT,
         )
         content = result["messages"][-1].content
@@ -79,6 +98,21 @@ async def handle_message(
         logger.exception("Agent error for chat_id=%s", chat_id)
         answer = f"Error: {e}"
     finally:
+        if "invoke_task" in locals():
+            if invoke_task.done():
+                _active_invocations.pop(thread_id, None)
+            else:
+                def clear_finished_invocation(task: asyncio.Task) -> None:
+                    # Retrieve any late exception so asyncio does not emit an
+                    # unhandled-task warning after a timed-out request.
+                    try:
+                        task.exception()
+                    except asyncio.CancelledError:
+                        pass
+                    if _active_invocations.get(thread_id) is task:
+                        _active_invocations.pop(thread_id, None)
+
+                invoke_task.add_done_callback(clear_finished_invocation)
         handler.emit_request_summary(update.message.text, timed_out=timed_out)
 
     await reply.edit_text(answer)
