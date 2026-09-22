@@ -8,6 +8,58 @@ An agent, which can be reached by a Telegram bot and pure CLI that answers read-
 - A valid `~/.kube/config` with cluster access
 - An [Anthropic API key](https://console.anthropic.com)
 
+## Install on Kubernetes
+
+The Helm chart deploys the Telegram bot in your cluster with a dedicated,
+read-only ServiceAccount and all required RBAC. It does not require
+Cloudflared: an in-cluster pod reaches the Kubernetes API through the standard
+`kubernetes.default.svc` service.
+
+### Prerequisites
+
+- Helm 3 and access to the target cluster
+- An agent image in a registry the cluster can pull from
+- An Anthropic API key, Telegram bot token, and one or more allowed Telegram chat IDs
+
+Build and push an image, replacing the registry and tag with yours:
+
+```bash
+docker build -t registry.example.com/sre-ai-agent:v0.1.0 .
+docker push registry.example.com/sre-ai-agent:v0.1.0
+```
+
+Create the runtime Secret. It is intentionally separate from the chart so
+credentials are never committed to Git:
+
+```bash
+kubectl create namespace sre-ai-agent
+kubectl -n sre-ai-agent create secret generic sre-ai-agent-env \
+  --from-literal=ANTHROPIC_API_KEY=your-key \
+  --from-literal=TELEGRAM_BOT_TOKEN=your-token \
+  --from-literal=ALLOWED_CHAT_IDS=123456789
+```
+
+Install the chart from a clone of this repository:
+
+```bash
+helm upgrade --install sre-ai-agent deploy/helm/sre-ai-agent \
+  --namespace sre-ai-agent \
+  --set image.repository=registry.example.com/sre-ai-agent \
+  --set image.tag=v0.1.0
+```
+
+Verify the deployment and its least-privilege access:
+
+```bash
+kubectl -n sre-ai-agent rollout status deployment/sre-ai-agent
+kubectl auth can-i --as=system:serviceaccount:sre-ai-agent:sre-ai-agent list pods --all-namespaces
+kubectl auth can-i --as=system:serviceaccount:sre-ai-agent:sre-ai-agent delete pods --all-namespaces
+```
+
+The first command should return `yes`; the second must return `no`. See
+[`deploy/helm/sre-ai-agent/values.yaml`](deploy/helm/sre-ai-agent/values.yaml)
+for image pull secrets, an existing ServiceAccount, and resource settings.
+
 ## Build
 
 ```bash
@@ -67,7 +119,7 @@ chown -R sre-agent:sre-agent /etc/sre-agent
 Copy your kubeconfig to `/etc/sre-agent/kubeconfig.yaml` (mode 600, owned by `sre-agent`). Its
 `server:` field just needs to be reachable from this VPS — usually your cluster's normal apiserver
 address, no further setup needed. If it isn't directly reachable (e.g. it's firewalled off, like
-`siloed_dev`'s cluster), point it at `https://127.0.0.1:6443` instead and set up the tunnel proxy
+your cluster), point it at `https://127.0.0.1:6443` instead and set up the tunnel proxy
 in [Private kube-apiserver access](#private-kube-apiserver-access-cloudflare-tunnel-optional) below
 first.
 
@@ -110,13 +162,12 @@ only if the apiserver is deliberately not reachable from the internet, and you'r
 through a Cloudflare Tunnel instead, via a local client proxy (`cloudflared access tcp`) that this
 VPS talks to over loopback. This is a separate, independent tunnel from the dashboard's (below):
 that one is a `cloudflared tunnel run` **server** carrying public traffic in; this one is a
-`cloudflared access tcp` **client** dialing a private route out. The `siloed_dev` repo's cluster is
-one example that needs this (its apiserver has no public inbound rule at all — see its
-`infra/CLAUDE.md` "Private kube-apiserver access" section for the cluster-side setup); most
-deployments of this agent won't.
+`cloudflared access tcp` **client** dialing a private route out. Your cluster operator must
+provide the corresponding Cloudflare Access route and cluster-side connector; most deployments
+of this agent will not need this path.
 
 ```bash
-# Service token credentials (from siloed_dev: terraform output cloudflared_kube_access_service_token_id / _secret)
+# Service token credentials from your Cloudflare Zero Trust configuration
 cp /opt/sre-agent/.env.cloudflared-kube.example /etc/sre-agent/cloudflared-kube.env
 chmod 600 /etc/sre-agent/cloudflared-kube.env
 chown sre-agent:sre-agent /etc/sre-agent/cloudflared-kube.env
@@ -127,8 +178,8 @@ Fill in `/etc/sre-agent/cloudflared-kube.env`:
 | Variable | What to put here |
 |---|---|
 | `TUNNEL_HOSTNAME` | The private hostname from the tunnel's TCP ingress rule, e.g. `kube-api-internal.siloed.dev` |
-| `TUNNEL_SERVICE_TOKEN_ID` | `terraform output -raw cloudflared_kube_access_service_token_id` in `siloed_dev`'s `infra/terraform` |
-| `TUNNEL_SERVICE_TOKEN_SECRET` | `terraform output -raw cloudflared_kube_access_service_token_secret` in `siloed_dev`'s `infra/terraform` |
+| `TUNNEL_SERVICE_TOKEN_ID` | Cloudflare Access service-token client ID |
+| `TUNNEL_SERVICE_TOKEN_SECRET` | Cloudflare Access service-token client secret |
 
 ```bash
 cp /opt/sre-agent/deploy/sre-agent-cloudflared-kube.service /etc/systemd/system/
