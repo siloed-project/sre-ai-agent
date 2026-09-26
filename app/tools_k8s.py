@@ -25,11 +25,6 @@ def load_kubernetes_config() -> None:
         )
 
 
-try:
-    load_kubernetes_config()
-except Exception:
-    pass  # Kubernetes API calls return the configuration error at runtime.
-
 _MAX_ITEMS = 50  # cap per tool call to stay within LLM context limits
 
 

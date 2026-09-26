@@ -20,6 +20,7 @@ Cloudflared: an in-cluster pod reaches the Kubernetes API through the standard
 - Helm 3 and access to the target cluster
 - An agent image in a registry the cluster can pull from
 - An Anthropic API key, Telegram bot token, and one or more allowed Telegram chat IDs
+- A default StorageClass, or a storage class configured through `persistence.storageClass`
 
 Build and push an image, replacing the registry and tag with yours:
 
@@ -58,7 +59,11 @@ kubectl auth can-i --as=system:serviceaccount:sre-ai-agent:sre-ai-agent delete p
 
 The first command should return `yes`; the second must return `no`. See
 [`deploy/helm/sre-ai-agent/values.yaml`](deploy/helm/sre-ai-agent/values.yaml)
-for image pull secrets, an existing ServiceAccount, and resource settings.
+for image pull secrets, an existing ServiceAccount, resource settings, and
+conversation storage. The chart enforces one replica because Telegram long
+polling permits only one active consumer. It persists conversation history in
+a PVC by default; set `persistence.enabled=false` only when losing history on
+Pod replacement is acceptable.
 
 ## Build
 

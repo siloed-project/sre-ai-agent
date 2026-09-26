@@ -20,6 +20,17 @@ rbac:
 # ALLOWED_CHAT_IDS. The chart never creates application credentials.
 existingSecret: sre-ai-agent-env
 
+# Telegram long polling permits only one active consumer. Persistent storage
+# keeps a chat's SQLite-backed conversation history across Pod replacements.
+# Set enabled=false only if ephemeral conversation history is acceptable.
+persistence:
+  enabled: true
+  existingClaim: ""
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 1Gi
+
 resources:
   requests:
     cpu: 100m

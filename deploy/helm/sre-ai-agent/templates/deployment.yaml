@@ -45,7 +45,12 @@ spec:
               mountPath: /tmp
       volumes:
         - name: state
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            name: {{ default (include "sre-ai-agent.fullname" .) .Values.persistence.existingClaim }}
+          {{- else }}
           emptyDir: {}
+          {{- end }}
         - name: tmp
           emptyDir: {}
       {{- with .Values.imagePullSecrets }}
