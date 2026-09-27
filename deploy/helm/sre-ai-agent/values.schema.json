@@ -5,6 +5,26 @@
   "properties": {
     "replicaCount": {"type": "integer", "minimum": 1, "maximum": 1},
     "existingSecret": {"type": "string", "minLength": 1},
+    "langfuse": {
+      "type": "object",
+      "required": ["enabled", "host", "existingSecret", "publicKeyKey", "secretKeyKey"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "host": {"type": "string"},
+        "existingSecret": {"type": "string"},
+        "publicKeyKey": {"type": "string", "minLength": 1},
+        "secretKeyKey": {"type": "string", "minLength": 1}
+      },
+      "if": {
+        "properties": {"enabled": {"const": true}}
+      },
+      "then": {
+        "properties": {
+          "host": {"minLength": 1},
+          "existingSecret": {"minLength": 1}
+        }
+      }
+    },
     "image": {
       "type": "object",
       "required": ["repository"],

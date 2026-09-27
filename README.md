@@ -65,6 +65,38 @@ polling permits only one active consumer. It persists conversation history in
 a PVC by default; set `persistence.enabled=false` only when losing history on
 Pod replacement is acceptable.
 
+### Optional Langfuse tracing
+
+The chart can send traces to an existing Langfuse project. Langfuse itself is
+not installed by this chart. Create a Secret containing a project API key pair:
+
+```bash
+kubectl -n sre-ai-agent create secret generic sre-ai-agent-langfuse \
+  --from-literal=LANGFUSE_PUBLIC_KEY='pk-lf-...' \
+  --from-literal=LANGFUSE_SECRET_KEY='sk-lf-...'
+```
+
+Enable tracing with a values file so the API keys remain outside Helm values
+and release metadata:
+
+```yaml
+langfuse:
+  enabled: true
+  host: https://langfuse.example.com
+  existingSecret: sre-ai-agent-langfuse
+```
+
+```bash
+helm upgrade --install sre-ai-agent deploy/helm/sre-ai-agent \
+  --namespace sre-ai-agent \
+  --values my-values.yaml
+```
+
+The `host` must be reachable from the agent Pod. If the Secret uses different
+key names, set `langfuse.publicKeyKey` and `langfuse.secretKeyKey`. With
+`langfuse.enabled=false` (the default), the Langfuse environment variables are
+omitted and the agent continues with structured logs only.
+
 ## Build
 
 ```bash

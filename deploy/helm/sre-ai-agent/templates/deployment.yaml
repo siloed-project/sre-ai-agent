@@ -31,6 +31,20 @@ spec:
               value: in_cluster
             - name: MEMORY_DB_PATH
               value: /var/lib/sre-agent/memory.db
+            {{- if .Values.langfuse.enabled }}
+            - name: LANGFUSE_HOST
+              value: {{ required "langfuse.host is required when Langfuse is enabled" .Values.langfuse.host | quote }}
+            - name: LANGFUSE_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "langfuse.existingSecret is required when Langfuse is enabled" .Values.langfuse.existingSecret }}
+                  key: {{ required "langfuse.publicKeyKey is required when Langfuse is enabled" .Values.langfuse.publicKeyKey }}
+            - name: LANGFUSE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "langfuse.existingSecret is required when Langfuse is enabled" .Values.langfuse.existingSecret }}
+                  key: {{ required "langfuse.secretKeyKey is required when Langfuse is enabled" .Values.langfuse.secretKeyKey }}
+            {{- end }}
           envFrom:
             - secretRef:
                 name: {{ required "existingSecret is required" .Values.existingSecret }}
