@@ -2,7 +2,7 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/siloed-project/sre-ai-agent
-  tag: ""
+  tag: latest
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []

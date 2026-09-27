@@ -18,15 +18,16 @@ Cloudflared: an in-cluster pod reaches the Kubernetes API through the standard
 ### Prerequisites
 
 - Helm 3 and access to the target cluster
-- An agent image in a registry the cluster can pull from
+- The published `ghcr.io/siloed-project/sre-ai-agent` image, or an image in a registry your cluster can pull from
 - An Anthropic API key, Telegram bot token, and one or more allowed Telegram chat IDs
 - A default StorageClass, or a storage class configured through `persistence.storageClass`
 
-Build and push an image, replacing the registry and tag with yours:
+Images are published from every successful `main` push. Use `latest` to get
+the newest main build, or select an immutable `sha-<commit>` tag. To test an
+unmerged change, build and push an image to a registry you control instead.
 
 ```bash
-docker build -t registry.example.com/sre-ai-agent:v0.1.0 .
-docker push registry.example.com/sre-ai-agent:v0.1.0
+docker pull ghcr.io/siloed-project/sre-ai-agent:latest
 ```
 
 Create the runtime Secret. It is intentionally separate from the chart so
@@ -45,8 +46,7 @@ Install the chart from a clone of this repository:
 ```bash
 helm upgrade --install sre-ai-agent deploy/helm/sre-ai-agent \
   --namespace sre-ai-agent \
-  --set image.repository=registry.example.com/sre-ai-agent \
-  --set image.tag=v0.1.0
+  --set image.tag=sha-<commit>
 ```
 
 Verify the deployment and its least-privilege access:
