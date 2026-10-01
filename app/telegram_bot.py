@@ -10,6 +10,7 @@ from telegram.ext import Application, ContextTypes, MessageHandler, filters
 
 from app.graph import build_agent
 from app.observability import make_callbacks, setup_logging
+from app.tools_k8s import load_kubernetes_config
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +126,7 @@ def main() -> None:
     allowed_chat_ids = parse_allowed_chat_ids(os.environ["ALLOWED_CHAT_IDS"])
 
     logger.info("Initialising SRE agent...")
+    load_kubernetes_config()
     db_path = os.environ.get("MEMORY_DB_PATH", "/var/lib/sre-agent/memory.db")
     db_dir = os.path.dirname(db_path)
     if db_dir:

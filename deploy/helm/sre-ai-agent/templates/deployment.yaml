@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sre-ai-agent.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "sre-ai-agent.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "sre-ai-agent.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "sre-ai-agent.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      serviceAccountName: {{ include "sre-ai-agent.serviceAccountName" . }}
+      automountServiceAccountToken: true
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: sre-ai-agent
+          image: "{{ .Values.image.repository }}{{ if .Values.image.tag }}:{{ .Values.image.tag }}{{ end }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "-m", "app.telegram_bot"]
+          env:
+            - name: KUBERNETES_ACCESS_MODE
+              value: in_cluster
+            - name: MEMORY_DB_PATH
+              value: /var/lib/sre-agent/memory.db
+            {{- if .Values.langfuse.enabled }}
+            - name: LANGFUSE_HOST
+              value: {{ required "langfuse.host is required when Langfuse is enabled" .Values.langfuse.host | quote }}
+            - name: LANGFUSE_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "langfuse.existingSecret is required when Langfuse is enabled" .Values.langfuse.existingSecret }}
+                  key: {{ required "langfuse.publicKeyKey is required when Langfuse is enabled" .Values.langfuse.publicKeyKey }}
+            - name: LANGFUSE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "langfuse.existingSecret is required when Langfuse is enabled" .Values.langfuse.existingSecret }}
+                  key: {{ required "langfuse.secretKeyKey is required when Langfuse is enabled" .Values.langfuse.secretKeyKey }}
+            {{- end }}
+          envFrom:
+            - secretRef:
+                name: {{ required "existingSecret is required" .Values.existingSecret }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: state
+              mountPath: /var/lib/sre-agent
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: state
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            name: {{ default (include "sre-ai-agent.fullname" .) .Values.persistence.existingClaim }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

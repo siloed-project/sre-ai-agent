@@ -110,6 +110,7 @@ docker run --rm \
 - `MEMORY_DB_PATH` — path to the SQLite file for conversation memory (default: `/var/lib/sre-agent/memory.db`); directory is created automatically on first run
 - `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` — optional; enable LangFuse tracing
 - `LANGFUSE_RETENTION_DAYS` — days to keep traces (default: 30); used by `scripts/cleanup_langfuse.py`
+- `KUBERNETES_ACCESS_MODE` — `kubeconfig` (default, CLI/VPS) or `in_cluster` (Helm deployment)
 
 Copy `.env.example` to `.env` and fill in values. `app/main.py` loads `.env` via `python-dotenv`.
 
@@ -133,9 +134,7 @@ This is a **read-only SRE Q&A agent** built on LangChain + LangGraph that transl
 
 **Observability:** `app/observability.py` provides `SREAgentCallbackHandler` (structured stdout logging) and `make_callbacks()`, which both entrypoints call. When `LANGFUSE_PUBLIC_KEY` is set, a `langfuse.callback.CallbackHandler` is appended — LangFuse handles cost tracking via its own model pricing catalog (configure under Settings → Models in the LangFuse UI). `scripts/cleanup_langfuse.py` deletes old traces. nginx config lives in `nginx/` and binds to loopback only — the public entry point is a Cloudflare Tunnel (`sre-agent-cloudflared.service`, unit in `deploy/`, token in `/etc/sre-agent/cloudflared.env`), gated by Cloudflare Access SSO at the edge; the VPS host firewall (`ufw`) denies all inbound traffic except SSH, since the tunnel connects outbound only.
 
-## Related repositories
-
-The Kubernetes cluster infrastructure (Terraform modules, Ansible, Helm charts, ArgoCD, environments) and RBAC configuration live in `../siloed-project/infra/`. Consult that repo when investigating kubeconfig setup, cluster permissions, or namespace/RBAC changes that affect what this agent can query.
+**Kubernetes deployment:** `deploy/helm/sre-ai-agent` is self-contained. It creates the read-only ServiceAccount and RBAC required by the tools, then runs one Telegram bot replica with in-cluster credentials and PVC-backed conversation memory. Cloudflared is not part of this deployment: a pod reaches the Kubernetes API through `kubernetes.default.svc`.
 
 ## Testing
 
