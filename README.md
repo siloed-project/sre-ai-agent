@@ -1,6 +1,6 @@
 # SRE Q&A Agent
 
-An agent, which can be reached by a Telegram bot and pure CLI that answers read-only questions about a Kubernetes cluster using Claude Haiku.
+An agent, which can be reached by a Telegram bot and pure CLI, that investigates a Kubernetes cluster using Claude Haiku. The Telegram bot can also propose a small set of mutations that require explicit inline-button approval before execution.
 
 ## Requirements
 
@@ -25,7 +25,7 @@ docker run --rm \
 
 ## Telegram Bot (systemd on VPS)
 
-The agent also runs as an interactive Telegram bot, deployed as a systemd service on any Linux VPS. It answers the same read-only Kubernetes questions sent via Telegram from an allowlisted chat ID.
+The agent also runs as an interactive Telegram bot, deployed as a systemd service on any Linux VPS. It answers Kubernetes questions sent from an allowlisted chat ID and presents native Approve/Reject buttons before any supported mutation.
 
 ### Prerequisites
 
@@ -33,6 +33,11 @@ The agent also runs as an interactive Telegram bot, deployed as a systemd servic
 - A Telegram bot token (from [@BotFather](https://t.me/BotFather))
 - A kubeconfig scoped to a read-only ServiceAccount, with a `server:` this VPS can reach directly (the default — nothing else to configure). If it can't reach it directly, see [Private kube-apiserver access](#private-kube-apiserver-access-cloudflare-tunnel-optional) below (optional)
 - `ANTHROPIC_API_KEY`
+
+The approval flow does not grant Kubernetes permissions. With the default read-only
+ServiceAccount, an approved restart, scale, or pod deletion reaches the Kubernetes
+API and returns `Forbidden`. Grant the narrowly required mutation verbs separately
+only when you are ready to enable them.
 
 ### Setup
 
