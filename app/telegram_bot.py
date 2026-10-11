@@ -22,6 +22,8 @@ AGENT_TIMEOUT = 120  # seconds
 # still writing checkpoint messages.
 _active_invocations: dict[str, asyncio.Task] = {}
 
+INVALID_CHAT_HISTORY_MARKER = "/errors/INVALID_CHAT_HISTORY"
+
 
 def parse_allowed_chat_ids(value: str) -> frozenset[int]:
     """Parse ALLOWED_CHAT_IDS env var. Raises ValueError on empty or non-numeric input."""
@@ -37,6 +39,26 @@ def extract_answer(content: str) -> str:
     if len(text) <= TELEGRAM_MAX_LENGTH:
         return text
     return text[: TELEGRAM_MAX_LENGTH - 3] + "..."
+
+
+def invoke_with_history_recovery(agent, message: HumanMessage, config: dict, thread_id: str):
+    """Invoke the agent, resetting only a thread whose saved tool history is incomplete."""
+    try:
+        return agent.invoke({"messages": [message]}, config=config)
+    except ValueError as exc:
+        if INVALID_CHAT_HISTORY_MARKER not in str(exc):
+            raise
+
+        checkpointer = getattr(agent, "checkpointer", None)
+        if checkpointer is None or not hasattr(checkpointer, "delete_thread"):
+            raise
+
+        logger.warning(
+            "Resetting invalid conversation history for thread_id=%s",
+            thread_id,
+        )
+        checkpointer.delete_thread(thread_id)
+        return agent.invoke({"messages": [message]}, config=config)
 
 
 async def handle_message(
@@ -72,9 +94,11 @@ async def handle_message(
         }
         invoke_task = asyncio.create_task(
             asyncio.to_thread(
-                lambda: agent.invoke(
-                    {"messages": [HumanMessage(content=update.message.text)]},
-                    config=config,
+                lambda: invoke_with_history_recovery(
+                    agent,
+                    HumanMessage(content=update.message.text),
+                    config,
+                    thread_id,
                 )
             )
         )

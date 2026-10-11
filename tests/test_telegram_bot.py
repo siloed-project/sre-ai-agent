@@ -2,10 +2,16 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 import app.telegram_bot as telegram_bot
-from app.telegram_bot import extract_answer, handle_message, parse_allowed_chat_ids, TELEGRAM_MAX_LENGTH
+from app.telegram_bot import (
+    TELEGRAM_MAX_LENGTH,
+    extract_answer,
+    handle_message,
+    invoke_with_history_recovery,
+    parse_allowed_chat_ids,
+)
 
 
 def test_parse_single_id():
@@ -83,6 +89,43 @@ def _make_agent(answer: str):
         "messages": [AIMessage(content=f"Answer:\n{answer}\n\nEvidence:\n- ns/pod: Running")]
     }
     return agent
+
+
+def test_invalid_history_resets_thread_and_retries_current_message():
+    agent = MagicMock()
+    expected = {"messages": [AIMessage(content="Answer:\nRecovered.")]}
+    agent.invoke.side_effect = [
+        ValueError(
+            "Found AIMessages with tool_calls that do not have a corresponding "
+            "ToolMessage. For troubleshooting, visit: "
+            "https://docs.langchain.com/oss/python/langgraph/errors/INVALID_CHAT_HISTORY"
+        ),
+        expected,
+    ]
+    message = HumanMessage(content="Are any pods unhealthy?")
+    config = {"configurable": {"thread_id": "12345"}}
+
+    result = invoke_with_history_recovery(agent, message, config, "12345")
+
+    assert result == expected
+    agent.checkpointer.delete_thread.assert_called_once_with("12345")
+    assert agent.invoke.call_count == 2
+
+
+def test_non_history_value_error_is_not_retried():
+    agent = MagicMock()
+    agent.invoke.side_effect = ValueError("unrelated failure")
+
+    with pytest.raises(ValueError, match="unrelated failure"):
+        invoke_with_history_recovery(
+            agent,
+            HumanMessage(content="hello"),
+            {"configurable": {"thread_id": "12345"}},
+            "12345",
+        )
+
+    agent.checkpointer.delete_thread.assert_not_called()
+    agent.invoke.assert_called_once()
 
 
 async def test_allowed_chat_id_receives_answer():
