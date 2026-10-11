@@ -11,7 +11,7 @@ def test_build_agent_returns_runnable(mock_anthropic_cls, mock_create_react):
     agent = build_agent()
 
     assert hasattr(agent, "invoke")
-    mock_anthropic_cls.assert_called_once_with(model="claude-haiku-4-5-20251001")
+    mock_anthropic_cls.assert_called_once_with(model="claude-haiku-5-5")
     mock_create_react.assert_called_once()
 
 

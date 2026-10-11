@@ -28,5 +28,5 @@ TOOLS = [
 
 
 def build_agent(checkpointer=None):
-    llm = ChatAnthropic(model="claude-haiku-4-5-20251001")
+    llm = ChatAnthropic(model="claude-haiku-5-5")
     return create_react_agent(llm, TOOLS, prompt=SYSTEM_PROMPT, checkpointer=checkpointer)
