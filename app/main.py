@@ -5,6 +5,7 @@ from langchain_core.messages import HumanMessage
 
 from app.graph import build_agent
 from app.observability import make_callbacks, setup_logging
+from app.tools_k8s import load_kubernetes_config
 
 load_dotenv()
 setup_logging()
@@ -18,6 +19,7 @@ def main():
     question = sys.argv[1]
 
     try:
+        load_kubernetes_config()
         agent = build_agent()
     except Exception as e:
         print(f"Error initializing agent: {e}")
