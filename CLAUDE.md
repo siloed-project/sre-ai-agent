@@ -115,7 +115,7 @@ Copy `.env.example` to `.env` and fill in values. `app/main.py` loads `.env` via
 
 ## Architecture
 
-This is a **read-only SRE Q&A agent** built on LangChain + LangGraph that translates natural language questions into Kubernetes API calls.
+This is an **SRE Q&A agent with explicit mutation approval** built on LangChain + LangGraph. Reads execute directly; the supported mutation tools pause until the requesting Telegram user approves or rejects them.
 
 **Request flow:**
 1. Question enters via CLI (`app/main.py`) or Telegram bot (`app/telegram_bot.py`)
@@ -123,7 +123,9 @@ This is a **read-only SRE Q&A agent** built on LangChain + LangGraph that transl
 3. The agent follows the structured 4-step investigation sequence defined in `app/prompts.py` — always starting with a cluster-wide scan before any namespaced lookups
 4. K8s tools in `app/tools_k8s.py` call the official `kubernetes` Python client; each returns a `ToolResult` TypedDict (`ok`, `items`, `error`) defined in `app/schemas.py`
 
-**Tool list** (all read-only): `list_pods`, `list_nodes`, `list_events`, `list_deployments`, `get_pod`, `get_deployment`, `get_pod_logs`
+**Read-only tools:** `list_pods`, `list_nodes`, `list_events`, `list_deployments`, `get_pod`, `get_deployment`, `get_pod_logs`
+
+**Approval-gated mutation tools:** `restart_deployment`, `scale_deployment`, `delete_pod`. Each uses a LangGraph interrupt; Telegram persists a single-use, five-minute approval and resumes the same graph thread only after the original requester presses Approve or Reject.
 
 **Result capping:** All list tools cap at `_MAX_ITEMS = 50`, sorting unhealthy/unavailable resources first to prioritize signal within the LLM context window.
 

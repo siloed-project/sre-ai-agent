@@ -11,10 +11,22 @@ from app.tools_k8s import (
     list_nodes,
     list_pods,
 )
+from app.tools_k8s_mutations import delete_pod, restart_deployment, scale_deployment
 
-TOOLS = [list_pods, list_nodes, list_events, list_deployments, get_pod, get_deployment, get_pod_logs]
+TOOLS = [
+    list_pods,
+    list_nodes,
+    list_events,
+    list_deployments,
+    get_pod,
+    get_deployment,
+    get_pod_logs,
+    restart_deployment,
+    scale_deployment,
+    delete_pod,
+]
 
 
 def build_agent(checkpointer=None):
-    llm = ChatAnthropic(model="claude-haiku-4-5-20251001")
+    llm = ChatAnthropic(model="claude-haiku-5-5")
     return create_react_agent(llm, TOOLS, prompt=SYSTEM_PROMPT, checkpointer=checkpointer)

@@ -1,17 +1,32 @@
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
+from langgraph.types import Command
 
 import app.telegram_bot as telegram_bot
+from app.approvals import ApprovalStore
 from app.telegram_bot import (
     TELEGRAM_MAX_LENGTH,
     extract_answer,
+    handle_approval,
     handle_message,
     invoke_with_history_recovery,
     parse_allowed_chat_ids,
 )
+
+
+@pytest.fixture(autouse=True)
+def disable_external_callbacks(monkeypatch):
+    handler = MagicMock()
+    monkeypatch.setattr(telegram_bot, "make_callbacks", lambda: ([], handler))
+
+    async def run_inline(function, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr(telegram_bot.asyncio, "to_thread", run_inline)
 
 
 def test_parse_single_id():
@@ -77,6 +92,7 @@ def test_extract_answer_exactly_at_limit_unchanged():
 def _make_update(chat_id: int, text: str):
     update = MagicMock()
     update.effective_chat.id = chat_id
+    update.effective_user.id = chat_id
     update.message.text = text
     reply_msg = AsyncMock()
     update.message.reply_text = AsyncMock(return_value=reply_msg)
@@ -197,3 +213,95 @@ async def test_list_content_is_handled_gracefully():
     await handle_message(update, MagicMock(), agent, frozenset({12345}))
     reply_msg.edit_text.assert_called_once()
     assert "No issues found" in reply_msg.edit_text.call_args[0][0]
+
+
+async def test_mutation_interrupt_renders_native_approval_buttons(tmp_path):
+    update, reply_msg = _make_update(12345, "Restart the api deployment")
+    agent = MagicMock()
+    agent.invoke.return_value = {
+        "messages": [AIMessage(content="")],
+        "__interrupt__": (
+            SimpleNamespace(
+                id="interrupt-1",
+                value={
+                    "kind": "mutation_approval",
+                    "action": "restart_deployment",
+                    "summary": "Restart deployment default/api",
+                    "parameters": {"namespace": "default", "name": "api"},
+                },
+            ),
+        ),
+    }
+    store = ApprovalStore(str(tmp_path / "approvals.db"))
+
+    await handle_message(update, MagicMock(), agent, frozenset({12345}), store)
+
+    text = reply_msg.edit_text.call_args.args[0]
+    markup = reply_msg.edit_text.call_args.kwargs["reply_markup"]
+    assert "Approval required" in text
+    assert "default/api" in text
+    assert markup.inline_keyboard[0][0].text == "✅ Approve"
+    assert markup.inline_keyboard[0][1].text == "❌ Reject"
+
+
+async def test_pending_mutation_blocks_another_message(tmp_path):
+    update, reply_msg = _make_update(12345, "Start another investigation")
+    store = ApprovalStore(str(tmp_path / "approvals.db"))
+    store.create(
+        thread_id="12345",
+        chat_id=12345,
+        user_id=12345,
+        payload={"kind": "mutation_approval", "action": "delete_pod"},
+    )
+    agent = _make_agent("This should not run.")
+
+    await handle_message(update, MagicMock(), agent, frozenset({12345}), store)
+
+    update.message.reply_text.assert_called_once()
+    assert "awaiting approval" in update.message.reply_text.call_args.args[0]
+    agent.invoke.assert_not_called()
+    reply_msg.edit_text.assert_not_called()
+
+
+async def test_approval_resumes_saved_graph_once(tmp_path):
+    store = ApprovalStore(str(tmp_path / "approvals.db"))
+    approval = store.create(
+        thread_id="12345",
+        chat_id=12345,
+        user_id=12345,
+        payload={
+            "kind": "mutation_approval",
+            "action": "delete_pod",
+            "summary": "Delete pod default/api-123",
+            "parameters": {"namespace": "default", "name": "api-123"},
+        },
+    )
+    update = MagicMock()
+    update.effective_chat.id = 12345
+    update.effective_user.id = 12345
+    update.callback_query.data = f"mutation:approve:{approval.approval_id}"
+    update.callback_query.answer = AsyncMock()
+    update.callback_query.edit_message_text = AsyncMock()
+    agent = _make_agent("Mutation failed: forbidden by RBAC.")
+
+    await handle_approval(
+        update,
+        MagicMock(),
+        agent,
+        frozenset({12345}),
+        store,
+    )
+
+    first_input = agent.invoke.call_args.args[0]
+    assert isinstance(first_input, Command)
+    assert first_input.resume is True
+    assert update.callback_query.edit_message_text.call_count == 2
+    assert "forbidden" in update.callback_query.edit_message_text.call_args.args[0]
+
+    with pytest.raises(ValueError, match="already been handled"):
+        store.claim(
+            approval.approval_id,
+            chat_id=12345,
+            user_id=12345,
+            decision="approved",
+        )
