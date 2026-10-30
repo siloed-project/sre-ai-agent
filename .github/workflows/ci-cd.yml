@@ -80,6 +80,8 @@ jobs:
             sudo cp /opt/sre-agent/deploy/sre-agent-langfuse.service /etc/systemd/system/sre-agent-langfuse.service
             sudo cp /opt/sre-agent/deploy/sre-agent-cleanup.service /etc/systemd/system/sre-agent-cleanup.service
             sudo cp /opt/sre-agent/deploy/sre-agent-cleanup.timer /etc/systemd/system/sre-agent-cleanup.timer
+            sudo cp /opt/sre-agent/deploy/sre-agent-docker-prune.service /etc/systemd/system/sre-agent-docker-prune.service
+            sudo cp /opt/sre-agent/deploy/sre-agent-docker-prune.timer /etc/systemd/system/sre-agent-docker-prune.timer
             sudo cp /opt/sre-agent/deploy/sre-agent-cloudflared.service /etc/systemd/system/sre-agent-cloudflared.service
             sudo cp /opt/sre-agent/nginx/langfuse-proxy.conf /etc/nginx/snippets/langfuse-proxy.conf
             sudo cp /opt/sre-agent/nginx/sre-agent.conf /etc/nginx/sites-available/sre-agent.conf
@@ -89,7 +91,7 @@ jobs:
               sudo cp /opt/sre-agent/deploy/sre-agent-cloudflared-kube.service /etc/systemd/system/sre-agent-cloudflared-kube.service
             fi
             sudo systemctl daemon-reload
-            sudo systemctl enable --now nginx sre-agent-langfuse sre-agent-cleanup.timer sre-agent-cloudflared
+            sudo systemctl enable --now nginx sre-agent-langfuse sre-agent-cleanup.timer sre-agent-docker-prune.timer sre-agent-cloudflared
             sudo systemctl restart sre-agent sre-agent-langfuse sre-agent-cloudflared
             if [ "$has_kube_tunnel" = "1" ]; then
               sudo systemctl enable --now sre-agent-cloudflared-kube

@@ -219,7 +219,8 @@ The agent, LangFuse stack, cleanup timer, and nginx run as separate managed serv
 | Service | Unit file | Auto-deployed? | What it does |
 |---|---|---|---|
 | LangFuse stack | `sre-agent-langfuse.service` | Yes — started/restarted on every deploy | Runs `docker compose` for LangFuse and its dependencies |
-| Trace cleanup | `sre-agent-cleanup.service` + `.timer` | Unit file only | Deletes old traces daily |
+| Trace cleanup | `sre-agent-cleanup.service` + `.timer` | Yes | Deletes old traces daily |
+| Docker image cleanup | `sre-agent-docker-prune.service` + `.timer` | Yes | Deletes unused images older than seven days each week; never prunes volumes |
 | nginx | system `nginx.service` | Yes, after one-time installation | Reverse proxy; already managed by systemd |
 | Cloudflare Tunnel | `sre-agent-cloudflared.service` | Yes — restarted on every deploy | Carries traffic from Cloudflare to nginx over an outbound connection; no inbound port needed |
 
@@ -277,11 +278,15 @@ cp /opt/sre-agent/deploy/sre-agent-langfuse.service /etc/systemd/system/
 cp /opt/sre-agent/deploy/sre-agent-cleanup.service /etc/systemd/system/
 cp /opt/sre-agent/deploy/sre-agent-cleanup.timer /etc/systemd/system/
 
+# Docker image cleanup (timer fires weekly and never prunes volumes)
+cp /opt/sre-agent/deploy/sre-agent-docker-prune.service /etc/systemd/system/
+cp /opt/sre-agent/deploy/sre-agent-docker-prune.timer /etc/systemd/system/
+
 # Cloudflare Tunnel
 cp /opt/sre-agent/deploy/sre-agent-cloudflared.service /etc/systemd/system/
 
 systemctl daemon-reload
-systemctl enable --now sre-agent-langfuse sre-agent-cleanup.timer sre-agent-cloudflared
+systemctl enable --now sre-agent-langfuse sre-agent-cleanup.timer sre-agent-docker-prune.timer sre-agent-cloudflared
 ```
 
 #### 3. Configure nginx
@@ -301,7 +306,7 @@ To enable HTTPS between Cloudflare and the VPS (SSL/TLS mode Full (strict)), unc
 #### Check status
 
 ```bash
-systemctl status sre-agent-langfuse sre-agent-cleanup.timer sre-agent-cloudflared nginx
+systemctl status sre-agent-langfuse sre-agent-cleanup.timer sre-agent-docker-prune.timer sre-agent-cloudflared nginx
 journalctl -u sre-agent-langfuse -f
 journalctl -u sre-agent-cloudflared -f
 ```
