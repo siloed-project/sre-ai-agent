@@ -33,6 +33,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Connect to deployment network
+        if: vars.TS_CLIENT_ID != '' && vars.TS_AUDIENCE != ''
         uses: tailscale/github-action@v4
         with:
           oauth-client-id: ${{ vars.TS_CLIENT_ID }}
@@ -49,6 +50,7 @@ jobs:
         run: |
           ssh deploy@${{ secrets.VPS_IP }} '
             set -e
+            export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
             cd /opt/sre-agent
             git fetch
             git reset --hard origin/main
@@ -111,11 +113,11 @@ jobs:
             fi
             sudo systemctl reload nginx
             sleep 5
-            systemctl is-active --quiet sre-agent || { systemctl status sre-agent --no-pager -l; exit 1; }
-            systemctl is-active --quiet sre-agent-langfuse || { systemctl status sre-agent-langfuse --no-pager -l; exit 1; }
-            systemctl is-active --quiet sre-agent-cloudflared || { systemctl status sre-agent-cloudflared --no-pager -l; exit 1; }
+            services="sre-agent sre-agent-langfuse sre-agent-cloudflared nginx"
             if [ "$has_kube_tunnel" = "1" ]; then
-              systemctl is-active --quiet sre-agent-cloudflared-kube || { systemctl status sre-agent-cloudflared-kube --no-pager -l; exit 1; }
+              services="$services sre-agent-cloudflared-kube"
             fi
-            systemctl is-active --quiet nginx || { systemctl status nginx --no-pager -l; exit 1; }
+            for service in $services; do
+              systemctl is-active --quiet "$service" || { echo "$service is not active" >&2; exit 1; }
+            done
           '
