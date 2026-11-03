@@ -71,8 +71,8 @@ chown -R sre-agent:sre-agent /etc/sre-agent
 
 Copy your kubeconfig to `/etc/sre-agent/kubeconfig.yaml` (mode 600, owned by `sre-agent`). Its
 `server:` field just needs to be reachable from this VPS — usually your cluster's normal apiserver
-address, no further setup needed. If it isn't directly reachable (e.g. it's firewalled off, like
-`siloed_dev`'s cluster), point it at `https://127.0.0.1:6443` instead and set up the tunnel proxy
+address, no further setup needed. If it isn't directly reachable (for example, because it only
+accepts private connections), point it at `https://127.0.0.1:6443` instead and set up the tunnel proxy
 in [Private kube-apiserver access](#private-kube-apiserver-access-cloudflare-tunnel-optional) below
 first.
 
@@ -107,7 +107,7 @@ ssh root@<vps-ip> 'journalctl -u sre-agent -f'
 The VPS IP only changes if the server is deleted and recreated — Hetzner preserves the IP across stop/start cycles. If it does change:
 
 1. Update the `VPS_IP` secret in the GitHub repo (Settings → Secrets → Actions).
-2. Re-run `setup-vps` and `setup-deploy-user` on the new server — the existing deploy key in GitHub secrets stays valid and does not need to be regenerated.
+2. Bootstrap the new VM and authorize the public key corresponding to `VPS_SSH_PRIVATE_KEY` for its `deploy` user. The existing deployment key can be reused.
 
 ### Private kube-apiserver access (Cloudflare Tunnel, optional)
 
@@ -117,13 +117,11 @@ only if the apiserver is deliberately not reachable from the internet, and you'r
 through a Cloudflare Tunnel instead, via a local client proxy (`cloudflared access tcp`) that this
 VPS talks to over loopback. This is a separate, independent tunnel from the dashboard's (below):
 that one is a `cloudflared tunnel run` **server** carrying public traffic in; this one is a
-`cloudflared access tcp` **client** dialing a private route out. The `siloed_dev` repo's cluster is
-one example that needs this (its apiserver has no public inbound rule at all — see its
-`infra/CLAUDE.md` "Private kube-apiserver access" section for the cluster-side setup); most
-deployments of this agent won't.
+`cloudflared access tcp` **client** dialing a private route out. Configure the cluster-side
+Cloudflare connector and Access policy separately before starting this client.
 
 ```bash
-# Service token credentials (from siloed_dev: terraform output cloudflared_kube_access_service_token_id / _secret)
+# Configure a Cloudflare Access service token for the private API route.
 cp /opt/sre-agent/.env.cloudflared-kube.example /etc/sre-agent/cloudflared-kube.env
 chmod 600 /etc/sre-agent/cloudflared-kube.env
 chown sre-agent:sre-agent /etc/sre-agent/cloudflared-kube.env
@@ -134,8 +132,8 @@ Fill in `/etc/sre-agent/cloudflared-kube.env`:
 | Variable | What to put here |
 |---|---|
 | `TUNNEL_HOSTNAME` | The private hostname from the tunnel's TCP ingress rule, e.g. `kube-api-internal.siloed.dev` |
-| `TUNNEL_SERVICE_TOKEN_ID` | `terraform output -raw cloudflared_kube_access_service_token_id` in `siloed_dev`'s `infra/terraform` |
-| `TUNNEL_SERVICE_TOKEN_SECRET` | `terraform output -raw cloudflared_kube_access_service_token_secret` in `siloed_dev`'s `infra/terraform` |
+| `TUNNEL_SERVICE_TOKEN_ID` | The ID of your Cloudflare Access service token |
+| `TUNNEL_SERVICE_TOKEN_SECRET` | The secret of your Cloudflare Access service token |
 
 ```bash
 cp /opt/sre-agent/deploy/sre-agent-cloudflared-kube.service /etc/systemd/system/
@@ -391,18 +389,32 @@ systemctl start sre-agent-cleanup.service
 
 ### Prepare a VPS for CI/CD
 
-The deployment workflow connects as the unprivileged `deploy` user. On a new
-Ubuntu VPS, install Docker, Docker Compose, nginx, and the `deploy` user first,
-then run the repository bootstrap script as root:
+The deployment workflow connects as the `deploy` user. On a fresh
+Debian 13 or Ubuntu 24.04+ VM with systemd, clone this repository into
+`/opt/sre-agent` and run the bootstrap as root:
 
 ```bash
 sudo /opt/sre-agent/deploy/bootstrap-vps.sh
 ```
 
-The bootstrap script also installs `cloudflared` (if missing) and hardens the
-host firewall with `ufw` — allowing SSH only and denying all other inbound
-traffic, since the Cloudflare Tunnel reaches nginx over an outbound
-connection and never needs an open inbound port.
+The script installs Python 3.12+, Docker/Compose, nginx and cloudflared; creates
+the `deploy` and `sre-agent` users; prepares deployment permissions; and bounds
+Docker and journal logs. Existing Docker daemon configuration is preserved;
+initializing a new logging configuration restarts Docker. It removes nginx's
+default public listener and configures `ufw` to allow inbound SSH only. The
+dashboard is reached through its outbound Cloudflare Tunnel.
+
+For private-network deployment, optionally install Tailscale with:
+
+```bash
+sudo /opt/sre-agent/deploy/bootstrap-vps.sh --with-tailscale
+sudo tailscale up
+```
+
+Use your own tailnet enrollment and access policy; the script embeds no tags,
+account settings or enrollment keys. It does not start the bot or dashboard,
+create application secrets, or install an SSH public key. Authorize your deploy
+public key in `/home/deploy/.ssh/authorized_keys` before using CI/CD.
 
 Before enabling CI deployment, provision these non-empty files on the VPS;
 they contain secrets and must not be committed:
