@@ -1,0 +1,59 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/siloed-project/sre-ai-agent
+  tag: latest
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+
+rbac:
+  create: true
+
+# Existing Secret containing ANTHROPIC_API_KEY, TELEGRAM_BOT_TOKEN, and
+# ALLOWED_CHAT_IDS. The chart never creates application credentials.
+existingSecret: sre-ai-agent-env
+
+# Optional Langfuse tracing. The chart references credentials from an existing
+# Secret and never stores them in Helm values or release metadata.
+langfuse:
+  enabled: false
+  host: ""
+  existingSecret: ""
+  publicKeyKey: LANGFUSE_PUBLIC_KEY
+  secretKeyKey: LANGFUSE_SECRET_KEY
+
+# Telegram long polling permits only one active consumer. Persistent storage
+# keeps a chat's SQLite-backed conversation history across Pod replacements.
+# Set enabled=false only if ephemeral conversation history is acceptable.
+persistence:
+  enabled: true
+  existingClaim: ""
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 1Gi
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 512Mi
+
+podSecurityContext:
+  fsGroup: 10001
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 10001

@@ -5,13 +5,25 @@ from langchain_core.tools import tool
 
 from app.schemas import ToolResult
 
-try:
-    # load_kube_config() with no args ignores $KUBECONFIG and only checks
-    # ~/.kube/config, which the sre-agent system user doesn't have. Pass it
-    # explicitly so /etc/sre-agent/env's KUBECONFIG setting actually applies.
-    config.load_kube_config(config_file=os.environ.get("KUBECONFIG"))
-except Exception:
-    pass  # Will fail at runtime if kubeconfig is unavailable
+def load_kubernetes_config() -> None:
+    """Load either the pod's ServiceAccount credentials or a kubeconfig file.
+
+    Kubernetes deployments set KUBERNETES_ACCESS_MODE=in_cluster. Existing CLI
+    and VPS deployments keep using a kubeconfig by default.
+    """
+    mode = os.environ.get("KUBERNETES_ACCESS_MODE", "kubeconfig")
+    if mode == "in_cluster":
+        config.load_incluster_config()
+    elif mode == "kubeconfig":
+        # load_kube_config() with no args ignores $KUBECONFIG and only checks
+        # ~/.kube/config, which the sre-agent system user doesn't have. Pass it
+        # explicitly so /etc/sre-agent/env's KUBECONFIG setting actually applies.
+        config.load_kube_config(config_file=os.environ.get("KUBECONFIG"))
+    else:
+        raise ValueError(
+            "KUBERNETES_ACCESS_MODE must be 'in_cluster' or 'kubeconfig'"
+        )
+
 
 _MAX_ITEMS = 50  # cap per tool call to stay within LLM context limits
 
