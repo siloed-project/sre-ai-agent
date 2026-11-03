@@ -391,18 +391,32 @@ systemctl start sre-agent-cleanup.service
 
 ### Prepare a VPS for CI/CD
 
-The deployment workflow connects as the unprivileged `deploy` user. On a new
-Ubuntu VPS, install Docker, Docker Compose, nginx, and the `deploy` user first,
-then run the repository bootstrap script as root:
+The deployment workflow connects as the `deploy` user. On a fresh
+Debian 13 or Ubuntu 24.04+ VM with systemd, clone this repository into
+`/opt/sre-agent` and run the bootstrap as root:
 
 ```bash
 sudo /opt/sre-agent/deploy/bootstrap-vps.sh
 ```
 
-The bootstrap script also installs `cloudflared` (if missing) and hardens the
-host firewall with `ufw` — allowing SSH only and denying all other inbound
-traffic, since the Cloudflare Tunnel reaches nginx over an outbound
-connection and never needs an open inbound port.
+The script installs Python 3.12+, Docker/Compose, nginx and cloudflared; creates
+the `deploy` and `sre-agent` users; prepares deployment permissions; and bounds
+Docker and journal logs. Existing Docker daemon configuration is preserved;
+initializing a new logging configuration restarts Docker. It removes nginx's
+default public listener and configures `ufw` to allow inbound SSH only. The
+dashboard is reached through its outbound Cloudflare Tunnel.
+
+For private-network deployment, optionally install Tailscale with:
+
+```bash
+sudo /opt/sre-agent/deploy/bootstrap-vps.sh --with-tailscale
+sudo tailscale up
+```
+
+Use your own tailnet enrollment and access policy; the script embeds no tags,
+account settings or enrollment keys. It does not start the bot or dashboard,
+create application secrets, or install an SSH public key. Authorize your deploy
+public key in `/home/deploy/.ssh/authorized_keys` before using CI/CD.
 
 Before enabling CI deployment, provision these non-empty files on the VPS;
 they contain secrets and must not be committed:

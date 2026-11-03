@@ -1,16 +1,78 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Run this script as root on the deployment host. It installs the narrowly
-# scoped sudo policy required by .github/workflows/ci-cd.yml. It deliberately
-# does not create or modify application secrets.
+# Prepare a Debian/Ubuntu VM for deployment. Application secrets and SSH
+# authorization stay operator-managed; Tailscale enrollment is optional.
+with_tailscale=false
+case "${1:-}" in
+  "") ;;
+  --with-tailscale) with_tailscale=true ;;
+  --help) echo "Usage: sudo $0 [--with-tailscale]"; exit 0 ;;
+  *) echo "Usage: sudo $0 [--with-tailscale]" >&2; exit 1 ;;
+esac
+[[ $# -le 1 ]] || { echo 'Too many arguments' >&2; exit 1; }
 
 if [ "${EUID}" -ne 0 ]; then
   echo "Run as root: sudo $0" >&2
   exit 1
 fi
 
-id deploy >/dev/null 2>&1 || { echo "Missing deploy user" >&2; exit 1; }
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+command -v apt-get >/dev/null || { echo 'Requires Debian/Ubuntu with apt-get' >&2; exit 1; }
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -q
+packages=(python3 python3-venv git curl ca-certificates nginx sudo ufw)
+if ! command -v docker >/dev/null; then
+  packages+=(docker.io)
+  # Debian packages the client separately; Ubuntu includes it in docker.io.
+  if apt-cache show docker-cli >/dev/null 2>&1; then packages+=(docker-cli); fi
+fi
+if ! docker compose version >/dev/null 2>&1; then
+  if apt-cache show docker-compose-plugin >/dev/null 2>&1; then
+    packages+=(docker-compose-plugin)
+  elif apt-cache show docker-compose-v2 >/dev/null 2>&1; then
+    packages+=(docker-compose-v2)
+  else
+    packages+=(docker-compose)
+  fi
+fi
+apt-get install -y --no-install-recommends "${packages[@]}"
+python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 12) else "Python 3.12+ is required")'
+
+id sre-agent >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin sre-agent
+id deploy >/dev/null 2>&1 || useradd --create-home --shell /bin/bash deploy
+usermod -aG docker deploy
+install -d -m 0700 -o sre-agent -g sre-agent /etc/sre-agent
+install -d -m 0750 -o sre-agent -g sre-agent /var/lib/sre-agent
+install -d -m 0700 -o deploy -g deploy /home/deploy/.ssh
+install -d -m 0755 -o deploy -g deploy /opt/sre-agent
+if [[ -d /opt/sre-agent/.git ]]; then
+  chown -R deploy:deploy /opt/sre-agent
+fi
+
+install -d -m 0755 /etc/docker /etc/systemd/journald.conf.d
+if [[ ! -e /etc/docker/daemon.json ]]; then
+  printf '%s\n' '{"log-driver":"local","log-opts":{"max-size":"10m","max-file":"3"}}' > /etc/docker/daemon.json
+  systemctl restart docker
+fi
+printf '[Journal]\nSystemMaxUse=100M\n' > /etc/systemd/journald.conf.d/sre-agent.conf
+systemctl restart systemd-journald
+systemctl enable --now docker
+docker compose version
+
+if "$with_tailscale"; then
+  if ! command -v tailscale >/dev/null; then
+    . /etc/os-release
+    case "$ID" in debian|ubuntu) ;; *) echo 'Unsupported Tailscale apt distribution' >&2; exit 1 ;; esac
+    curl -fsSL "https://pkgs.tailscale.com/stable/$ID/$VERSION_CODENAME.noarmor.gpg" -o /usr/share/keyrings/tailscale-archive-keyring.gpg
+    curl -fsSL "https://pkgs.tailscale.com/stable/$ID/$VERSION_CODENAME.tailscale-keyring.list" -o /etc/apt/sources.list.d/tailscale.list
+    apt-get update -q
+    apt-get install -y --no-install-recommends tailscale
+  fi
+  systemctl enable --now tailscaled
+  echo 'Tailscale installed; enroll separately with tailscale up.'
+fi
+
 for command in docker nginx systemctl visudo; do
   command -v "${command}" >/dev/null || {
     echo "Missing required command: ${command}" >&2
@@ -29,6 +91,18 @@ if ! command -v cloudflared >/dev/null; then
   dpkg -i "${tmp_deb}"
   rm -f "${tmp_deb}"
 fi
+
+# Unit files use this path; recent packages install into /usr/local/bin.
+if [[ ! -e /usr/bin/cloudflared ]]; then
+  ln -s "$(command -v cloudflared)" /usr/bin/cloudflared
+fi
+
+if [[ -L /etc/nginx/sites-enabled/default ]]; then
+  unlink /etc/nginx/sites-enabled/default
+  nginx -t
+  systemctl restart nginx
+fi
+apt-get clean
 
 install -d -m 0755 /etc/sudoers.d
 install -m 0440 /dev/stdin /etc/sudoers.d/deploy-sre-agent <<'SUDOERS'
