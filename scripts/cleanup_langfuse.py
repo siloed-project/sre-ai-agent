@@ -9,35 +9,41 @@ Requires LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, and LANGFUSE_HOST in the envi
 """
 
 import os
+import base64
+import json
 from datetime import datetime, timedelta, timezone
-
-from langfuse import Langfuse  # type: ignore[import]
+from urllib.parse import urlencode, quote
+from urllib.request import Request, urlopen
 
 _RETENTION_DAYS = int(os.environ.get("LANGFUSE_RETENTION_DAYS", "30"))
 
 
 def main() -> None:
-    client = Langfuse()
     cutoff = datetime.now(tz=timezone.utc) - timedelta(days=_RETENTION_DAYS)
-    deleted = 0
-    page = 1
+    host = os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com").rstrip("/")
+    credentials = f"{os.environ['LANGFUSE_PUBLIC_KEY']}:{os.environ['LANGFUSE_SECRET_KEY']}"
+    authorization = "Basic " + base64.b64encode(credentials.encode()).decode()
 
+    def request(path, method="GET"):
+        req = Request(host + path, headers={"Authorization": authorization}, method=method)
+        with urlopen(req, timeout=30) as response:
+            return json.load(response)
+
+    # Collect IDs before deleting, so pagination cannot skip shifted rows.
+    trace_ids = []
+    page = 1
     while True:
-        traces = client.fetch_traces(
-            to_timestamp=cutoff,
-            page=page,
-            limit=100,
-        )
-        if not traces.data:
-            break
-        for trace in traces.data:
-            client.delete_trace(trace.id)
-            deleted += 1
-        if len(traces.data) < 100:
+        query = urlencode({"toTimestamp": cutoff.isoformat(), "page": page, "limit": 100})
+        traces = request("/api/public/traces?" + query)["data"]
+        trace_ids.extend(trace["id"] for trace in traces)
+        if len(traces) < 100:
             break
         page += 1
 
-    print(f"Deleted {deleted} trace(s) older than {_RETENTION_DAYS} days.")
+    for trace_id in trace_ids:
+        request("/api/public/traces/" + quote(trace_id, safe=""), method="DELETE")
+
+    print(f"Deleted {len(trace_ids)} trace(s) older than {_RETENTION_DAYS} days.")
 
 
 if __name__ == "__main__":
