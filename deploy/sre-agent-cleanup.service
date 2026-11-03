@@ -6,5 +6,6 @@ After=network.target sre-agent-langfuse.service
 Type=oneshot
 User=sre-agent
 EnvironmentFile=/etc/sre-agent/langfuse.env
+EnvironmentFile=/etc/sre-agent/env
 WorkingDirectory=/opt/sre-agent
 ExecStart=/opt/sre-agent/.venv/bin/python scripts/cleanup_langfuse.py

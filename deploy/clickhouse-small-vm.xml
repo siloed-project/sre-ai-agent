@@ -1,0 +1,24 @@
+<clickhouse>
+    <!-- Internal diagnostics consumed 14 GB on the old host. Keep application
+         traces in the default database, but disable these internal log tables. -->
+    <query_log remove="1" />
+    <query_thread_log remove="1" />
+    <query_views_log remove="1" />
+    <query_metric_log remove="1" />
+    <trace_log remove="1" />
+    <metric_log remove="1" />
+    <asynchronous_metric_log remove="1" />
+    <part_log remove="1" />
+    <text_log remove="1" />
+    <processors_profile_log remove="1" />
+    <opentelemetry_span_log remove="1" />
+    <asynchronous_insert_log remove="1" />
+    <filesystem_cache_log remove="1" />
+    <error_log remove="1" />
+    <logger>
+        <level>warning</level>
+        <size>10M</size>
+        <count>3</count>
+    </logger>
+    <max_server_memory_usage>1073741824</max_server_memory_usage>
+</clickhouse>
