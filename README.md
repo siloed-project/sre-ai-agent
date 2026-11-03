@@ -82,7 +82,9 @@ The service file uses `StateDirectory=sre-agent` so systemd automatically create
 
 ### Updating after code changes
 
-Deployment is automatic: push to `main` triggers GitHub Actions, which runs tests and deploys to the VPS if they pass.
+Deployment is automatic: push to `main` triggers GitHub Actions, which runs tests and deploys to the configured Linux VM if they pass. Set repository secrets `VPS_IP` (SSH hostname or IP) and `VPS_SSH_PRIVATE_KEY` for the `deploy` user.
+
+For a VM on a private network, optionally set repository variables `TS_CLIENT_ID` and `TS_AUDIENCE` for a Tailscale federated identity, then set `VPS_IP` to the VM's Tailscale address or DNS name. The workflow joins as `tag:sre-agent-deploy`; configure your tailnet policy to allow that tag to reach the deployment VM on TCP 22, and restrict the federated identity to your repository's `main` workflow. With both variables unset, deployment uses ordinary SSH connectivity. Tailscale carries the connection; the existing SSH key still authenticates the deploy user.
 
 **Manual override** (emergency rollback or off-pipeline fix):
 ```bash
