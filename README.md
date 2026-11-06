@@ -34,10 +34,14 @@ The agent also runs as an interactive Telegram bot, deployed as a systemd servic
 - A kubeconfig scoped to a read-only ServiceAccount, with a `server:` this VPS can reach directly (the default — nothing else to configure). If it can't reach it directly, see [Private kube-apiserver access](#private-kube-apiserver-access-cloudflare-tunnel-optional) below (optional)
 - `ANTHROPIC_API_KEY`
 
-The approval flow does not grant Kubernetes permissions. With the default read-only
+The approval flow does not grant Kubernetes permissions. With a read-only
 ServiceAccount, an approved restart, scale, or pod deletion reaches the Kubernetes
-API and returns `Forbidden`. Grant the narrowly required mutation verbs separately
-only when you are ready to enable them.
+API and returns `Forbidden`. The mutations need exactly: `patch` on
+`apps/deployments` (restart), `patch` on `apps/deployments/scale` (scale), and
+`delete` on `pods` (delete pod). In the siloed cluster these are granted by the
+`sre-agent-mutator` ClusterRole in `siloed_dev`'s `infra/helm-charts/sre-agent-rbac`,
+bound only in the namespaces listed in that chart's `values.yaml`; anywhere else
+an approved mutation still returns `Forbidden`.
 
 ### Setup
 
